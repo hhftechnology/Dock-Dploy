@@ -1,5 +1,5 @@
 {
-  "projectName": "Dashix",
+  "projectName": "Dock-Dploy",
   "mode": "file-router",
   "typescript": true,
   "tailwind": true,
@@ -7,8 +7,5 @@
   "git": true,
   "version": 1,
   "framework": "react-cra",
-  "chosenAddOns": [
-    "biome",
-    "shadcn"
-  ]
+  "chosenAddOns": ["biome", "shadcn"]
 }

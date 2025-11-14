@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ThemeProvider } from "../../components/ThemeProvider";
 import { CodeEditor } from "../../components/CodeEditor";
 import { SidebarUI } from "../../components/SidebarUI";
 import { Card } from "../../components/ui/card";
@@ -20,13 +19,29 @@ import {
   DropdownMenuItem,
 } from "../../components/ui/dropdown-menu";
 import { Toggle } from "../../components/ui/toggle";
-import { load } from "js-yaml";
+import jsyaml from "js-yaml";
 import {
   SidebarProvider,
   Sidebar,
   SidebarInset,
   SidebarTrigger,
 } from "../../components/ui/sidebar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
+import { Alert, AlertTitle, AlertDescription } from "../../components/ui/alert";
+import { Textarea } from "../../components/ui/textarea";
+import {
+  Download,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Settings,
+} from "lucide-react";
 
 export const Route = createFileRoute("/docker/compose-builder")({
   component: App,
@@ -51,6 +66,21 @@ interface Healthcheck {
   start_interval: string;
 }
 
+interface ResourceLimits {
+  cpus?: string;
+  memory?: string;
+}
+
+interface ResourceReservations {
+  cpus?: string;
+  memory?: string;
+}
+
+interface DeployResources {
+  limits?: ResourceLimits;
+  reservations?: ResourceReservations;
+}
+
 interface ServiceConfig {
   name: string;
   image: string;
@@ -58,6 +88,8 @@ interface ServiceConfig {
   ports: PortMapping[];
   volumes: VolumeMapping[];
   environment: { key: string; value: string }[];
+  environment_syntax: "array" | "dict";
+  volumes_syntax: "array" | "dict";
   command: string;
   restart: string;
   healthcheck?: Healthcheck;
@@ -74,6 +106,9 @@ interface ServiceConfig {
   read_only?: boolean;
   shm_size?: string;
   security_opt?: string[];
+  deploy?: {
+    resources?: DeployResources;
+  };
 }
 
 interface NetworkConfig {
@@ -112,6 +147,8 @@ function defaultService(): ServiceConfig {
     ports: [],
     volumes: [],
     environment: [],
+    environment_syntax: "array",
+    volumes_syntax: "array",
     command: "",
     restart: "",
     healthcheck: undefined,
@@ -128,6 +165,7 @@ function defaultService(): ServiceConfig {
     read_only: undefined,
     shm_size: "",
     security_opt: [],
+    deploy: undefined,
   };
 }
 
@@ -195,6 +233,11 @@ function App() {
   });
   const codeFileRef = useRef<HTMLDivElement>(null);
   const [editorSize, setEditorSize] = useState({ width: 0, height: 0 });
+  const [conversionDialogOpen, setConversionDialogOpen] = useState(false);
+  const [conversionType, setConversionType] = useState<string>("");
+  const [conversionOutput, setConversionOutput] = useState<string>("");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationSuccess, setValidationSuccess] = useState(false);
 
   useLayoutEffect(() => {
     if (!codeFileRef.current) return;
@@ -253,21 +296,54 @@ function App() {
               .filter(Boolean)
           : undefined,
         volumes: svc.volumes.length
-          ? svc.volumes
-              .map((v) => {
-                if (v.host && v.container) {
-                  return v.read_only
-                    ? `${v.host}:${v.container}:ro`
-                    : `${v.host}:${v.container}`;
-                }
-                return v.container ? v.container : undefined;
-              })
-              .filter(Boolean)
+          ? svc.volumes_syntax === "dict"
+            ? svc.volumes
+                .map((v) => {
+                  if (v.host && v.container) {
+                    const vol: any = {
+                      type: "bind",
+                      source: v.host,
+                      target: v.container,
+                    };
+                    if (v.read_only) {
+                      vol.read_only = true;
+                    }
+                    return vol;
+                  } else if (v.container) {
+                    // Anonymous volume - just target path
+                    return {
+                      type: "volume",
+                      target: v.container,
+                    };
+                  }
+                  return undefined;
+                })
+                .filter(Boolean)
+            : svc.volumes
+                .map((v) => {
+                  if (v.host && v.container) {
+                    return v.read_only
+                      ? `${v.host}:${v.container}:ro`
+                      : `${v.host}:${v.container}`;
+                  }
+                  return v.container ? v.container : undefined;
+                })
+                .filter(Boolean)
           : undefined,
         environment: svc.environment.length
-          ? svc.environment
-              .filter(({ key }) => key)
-              .map(({ key, value }) => `${key}=${value}`)
+          ? svc.environment_syntax === "dict"
+            ? svc.environment
+                .filter(({ key }) => key)
+                .reduce(
+                  (acc, { key, value }) => {
+                    acc[key] = value;
+                    return acc;
+                  },
+                  {} as Record<string, string>
+                )
+            : svc.environment
+                .filter(({ key }) => key)
+                .map(({ key, value }) => `${key}=${value}`)
           : undefined,
         healthcheck:
           svc.healthcheck && svc.healthcheck.test
@@ -317,6 +393,32 @@ function App() {
         security_opt:
           svc.security_opt && svc.security_opt.filter(Boolean).length
             ? svc.security_opt.filter(Boolean)
+            : undefined,
+        deploy:
+          svc.deploy && svc.deploy.resources
+            ? (() => {
+                const limits: any = {};
+                if (svc.deploy.resources.limits?.cpus)
+                  limits.cpus = svc.deploy.resources.limits.cpus;
+                if (svc.deploy.resources.limits?.memory)
+                  limits.memory = svc.deploy.resources.limits.memory;
+
+                const reservations: any = {};
+                if (svc.deploy.resources.reservations?.cpus)
+                  reservations.cpus = svc.deploy.resources.reservations.cpus;
+                if (svc.deploy.resources.reservations?.memory)
+                  reservations.memory =
+                    svc.deploy.resources.reservations.memory;
+
+                const resources: any = {};
+                if (Object.keys(limits).length > 0) resources.limits = limits;
+                if (Object.keys(reservations).length > 0)
+                  resources.reservations = reservations;
+
+                return Object.keys(resources).length > 0
+                  ? { resources }
+                  : undefined;
+              })()
             : undefined,
       };
     });
@@ -502,6 +604,441 @@ function App() {
       : entries;
   }
 
+  // Validation functions
+  function validateServiceName(name: string): string | null {
+    if (!name) return "Service name is required";
+    if (!/^[a-z0-9_-]+$/i.test(name)) {
+      return "Service name must contain only alphanumeric characters, hyphens, and underscores";
+    }
+    return null;
+  }
+
+  function validatePort(port: string): string | null {
+    if (!port) return null;
+    const num = parseInt(port, 10);
+    if (isNaN(num) || num < 1 || num > 65535) {
+      return "Port must be between 1 and 65535";
+    }
+    return null;
+  }
+
+  function validateEnvVarKey(key: string): string | null {
+    if (!key) return null;
+    if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) {
+      return "Environment variable key should start with a letter or underscore and contain only alphanumeric characters and underscores";
+    }
+    return null;
+  }
+
+  function validateCpuValue(cpu: string): string | null {
+    if (!cpu) return null;
+    if (!/^\d+(\.\d+)?$/.test(cpu)) {
+      return "CPU value must be a number (e.g., 0.5, 1, 2)";
+    }
+    const num = parseFloat(cpu);
+    if (num < 0) {
+      return "CPU value must be positive";
+    }
+    return null;
+  }
+
+  function validateMemoryValue(memory: string): string | null {
+    if (!memory) return null;
+    if (!/^\d+[kmgKMG]?[bB]?$/.test(memory) && !/^\d+$/.test(memory)) {
+      return "Memory value must be a number with optional unit (e.g., 512m, 2g, 1024)";
+    }
+    return null;
+  }
+
+  function validateVolumePath(path: string): string | null {
+    if (!path) return null;
+    // Basic validation - should not contain invalid characters
+    if (/[<>|?*]/.test(path)) {
+      return "Volume path contains invalid characters";
+    }
+    return null;
+  }
+
+  // Validation and reformatting
+  function validateAndReformat() {
+    try {
+      setValidationError(null);
+      setValidationSuccess(false);
+
+      // Validate services
+      const errors: string[] = [];
+      services.forEach((svc, idx) => {
+        if (!svc.name) {
+          errors.push(`Service ${idx + 1}: Name is required`);
+        } else {
+          const nameError = validateServiceName(svc.name);
+          if (nameError) errors.push(`Service "${svc.name}": ${nameError}`);
+        }
+
+        if (!svc.image) {
+          errors.push(`Service "${svc.name || idx + 1}": Image is required`);
+        }
+
+        svc.ports.forEach((port, pIdx) => {
+          if (port.host) {
+            const portError = validatePort(port.host);
+            if (portError)
+              errors.push(
+                `Service "${svc.name || idx + 1}" port ${pIdx + 1} host: ${portError}`
+              );
+          }
+          if (port.container) {
+            const portError = validatePort(port.container);
+            if (portError)
+              errors.push(
+                `Service "${svc.name || idx + 1}" port ${pIdx + 1} container: ${portError}`
+              );
+          }
+        });
+
+        svc.environment.forEach((env, eIdx) => {
+          if (env.key) {
+            const keyError = validateEnvVarKey(env.key);
+            if (keyError)
+              errors.push(
+                `Service "${svc.name || idx + 1}" env var ${eIdx + 1}: ${keyError}`
+              );
+          }
+        });
+
+        if (svc.deploy?.resources?.limits?.cpus) {
+          const cpuError = validateCpuValue(svc.deploy.resources.limits.cpus);
+          if (cpuError)
+            errors.push(
+              `Service "${svc.name || idx + 1}" CPU limit: ${cpuError}`
+            );
+        }
+        if (svc.deploy?.resources?.limits?.memory) {
+          const memError = validateMemoryValue(
+            svc.deploy.resources.limits.memory
+          );
+          if (memError)
+            errors.push(
+              `Service "${svc.name || idx + 1}" memory limit: ${memError}`
+            );
+        }
+        if (svc.deploy?.resources?.reservations?.cpus) {
+          const cpuError = validateCpuValue(
+            svc.deploy.resources.reservations.cpus
+          );
+          if (cpuError)
+            errors.push(
+              `Service "${svc.name || idx + 1}" CPU reservation: ${cpuError}`
+            );
+        }
+        if (svc.deploy?.resources?.reservations?.memory) {
+          const memError = validateMemoryValue(
+            svc.deploy.resources.reservations.memory
+          );
+          if (memError)
+            errors.push(
+              `Service "${svc.name || idx + 1}" memory reservation: ${memError}`
+            );
+        }
+      });
+
+      if (errors.length > 0) {
+        setValidationError(errors.join("; "));
+        return;
+      }
+
+      const parsed = jsyaml.load(yaml);
+      if (!parsed) {
+        setValidationError("Invalid YAML: Empty file");
+        return;
+      }
+      const reformatted = jsyaml.dump(parsed, { indent: 2, lineWidth: -1 });
+      setYaml(reformatted);
+      setValidationSuccess(true);
+      setTimeout(() => setValidationSuccess(false), 3000);
+    } catch (error: any) {
+      setValidationError(error.message || "Invalid YAML format");
+      setValidationSuccess(false);
+    }
+  }
+
+  // Convert to docker run command
+  function convertToDockerRun(service: ServiceConfig): string {
+    let cmd = "docker run";
+
+    if (service.container_name) {
+      cmd += ` --name ${service.container_name}`;
+    }
+
+    if (service.restart) {
+      cmd += ` --restart ${service.restart}`;
+    }
+
+    service.ports.forEach((p) => {
+      if (p.host && p.container) {
+        cmd += ` -p ${p.host}:${p.container}`;
+      }
+    });
+
+    service.volumes.forEach((v) => {
+      if (v.host && v.container) {
+        cmd += ` -v ${v.host}:${v.container}`;
+        if (v.read_only) cmd += ":ro";
+      }
+    });
+
+    service.environment.forEach((e) => {
+      if (e.key) {
+        cmd += ` -e ${e.key}=${e.value || ""}`;
+      }
+    });
+
+    if (service.user) {
+      cmd += ` --user ${service.user}`;
+    }
+
+    if (service.working_dir) {
+      cmd += ` -w ${service.working_dir}`;
+    }
+
+    if (service.privileged) {
+      cmd += " --privileged";
+    }
+
+    if (service.read_only) {
+      cmd += " --read-only";
+    }
+
+    if (service.shm_size) {
+      cmd += ` --shm-size ${service.shm_size}`;
+    }
+
+    service.security_opt?.forEach((opt) => {
+      if (opt) cmd += ` --security-opt ${opt}`;
+    });
+
+    service.extra_hosts?.forEach((host) => {
+      if (host) cmd += ` --add-host ${host}`;
+    });
+
+    service.dns?.forEach((dns) => {
+      if (dns) cmd += ` --dns ${dns}`;
+    });
+
+    if (service.networks && service.networks.length > 0) {
+      cmd += ` --network ${service.networks[0]}`;
+    }
+
+    cmd += ` ${service.image || ""}`;
+
+    if (service.command) {
+      try {
+        const parsed = JSON.parse(service.command);
+        if (Array.isArray(parsed)) {
+          cmd += ` ${parsed.join(" ")}`;
+        } else {
+          cmd += ` ${service.command}`;
+        }
+      } catch {
+        cmd += ` ${service.command}`;
+      }
+    }
+
+    return cmd;
+  }
+
+  // Convert to systemd service
+  function convertToSystemd(service: ServiceConfig): string {
+    const containerName = service.container_name || service.name;
+    const serviceName = containerName.replace(/[^a-zA-Z0-9]/g, "-");
+
+    let unit = `[Unit]
+Description=Docker Container ${containerName}
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start ${containerName}
+ExecStop=/usr/bin/docker stop ${containerName}
+Restart=${service.restart === "always" ? "always" : service.restart === "unless-stopped" ? "on-failure" : "no"}
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+    return unit;
+  }
+
+  // Generate .env file
+  function generateEnvFile(): string {
+    const envVars: string[] = [];
+    services.forEach((svc) => {
+      svc.environment.forEach((e) => {
+        if (e.key && !envVars.some((v) => v.startsWith(e.key + "="))) {
+          envVars.push(`${e.key}=${e.value || ""}`);
+        }
+      });
+    });
+    return envVars.join("\n");
+  }
+
+  // Redact sensitive data
+  function redactSensitiveData(yamlText: string): string {
+    const sensitivePatterns = [
+      /password\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+      /secret\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+      /api[_-]?key\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+      /token\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+      /auth[_-]?token\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+      /access[_-]?key\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+      /private[_-]?key\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
+    ];
+
+    let redacted = yamlText;
+    sensitivePatterns.forEach((pattern) => {
+      redacted = redacted.replace(pattern, (match, value) => {
+        return match.replace(value, "***REDACTED***");
+      });
+    });
+
+    return redacted;
+  }
+
+  // Generate Komodo .toml from Portainer stack
+  function generateKomodoToml(portainerStack: any): string {
+    try {
+      // Try to parse if it's a string
+      let stack = portainerStack;
+      if (typeof portainerStack === "string") {
+        stack = JSON.parse(portainerStack);
+      }
+
+      // Extract services from compose file if available
+      const composeData = jsyaml.load(yaml) as any;
+      const services = composeData?.services || {};
+
+      let toml = `# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+`;
+
+      Object.entries(services).forEach(([name, service]: [string, any]) => {
+        toml += `[${name}]\n`;
+        if (service.image) {
+          toml += `image = "${service.image}"\n`;
+        }
+        if (service.container_name) {
+          toml += `container_name = "${service.container_name}"\n`;
+        }
+        if (service.restart) {
+          toml += `restart = "${service.restart}"\n`;
+        }
+        if (service.ports && Array.isArray(service.ports)) {
+          toml += `ports = [\n`;
+          service.ports.forEach((port: string) => {
+            toml += `  "${port}",\n`;
+          });
+          toml += `]\n`;
+        }
+        if (service.volumes && Array.isArray(service.volumes)) {
+          toml += `volumes = [\n`;
+          service.volumes.forEach((vol: string) => {
+            toml += `  "${vol}",\n`;
+          });
+          toml += `]\n`;
+        }
+        if (service.environment) {
+          if (Array.isArray(service.environment)) {
+            toml += `environment = [\n`;
+            service.environment.forEach((env: string) => {
+              toml += `  "${env}",\n`;
+            });
+            toml += `]\n`;
+          } else {
+            toml += `environment = {}\n`;
+            Object.entries(service.environment).forEach(
+              ([key, value]: [string, any]) => {
+                toml += `environment.${key} = "${value}"\n`;
+              }
+            );
+          }
+        }
+        toml += `\n`;
+      });
+
+      return toml;
+    } catch (error: any) {
+      return `# Komodo configuration generated from Docker Compose
+# Note: Error parsing configuration: ${error.message}
+# Please adjust manually
+
+[service]
+name = "service"
+image = ""
+
+# Add configuration as needed
+`;
+    }
+  }
+
+  function handleConversion(type: string) {
+    setConversionType(type);
+    let output = "";
+
+    try {
+      switch (type) {
+        case "docker-run":
+          if (selectedIdx !== null && services[selectedIdx]) {
+            output = convertToDockerRun(services[selectedIdx]);
+          } else {
+            output = services.map((s) => convertToDockerRun(s)).join("\n\n");
+          }
+          break;
+        case "systemd":
+          if (selectedIdx !== null && services[selectedIdx]) {
+            output = convertToSystemd(services[selectedIdx]);
+          } else {
+            output = services.map((s) => convertToSystemd(s)).join("\n\n");
+          }
+          break;
+        case "env":
+          output = generateEnvFile();
+          break;
+        case "redact":
+          output = redactSensitiveData(yaml);
+          break;
+        case "komodo":
+          output = generateKomodoToml({});
+          break;
+        default:
+          output = "Unknown conversion type";
+      }
+      setConversionOutput(output);
+      setConversionDialogOpen(true);
+    } catch (error: any) {
+      setConversionOutput(`Error: ${error.message}`);
+      setConversionDialogOpen(true);
+    }
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text);
+  }
+
+  function downloadFile(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
     setYaml(generateYaml(services, networks, volumes));
   }, [services, networks, volumes]);
@@ -677,6 +1214,44 @@ function App() {
     setServices(newServices);
   }
 
+  function updateResourceField(
+    type: "limits" | "reservations",
+    field: "cpus" | "memory",
+    value: string
+  ) {
+    if (typeof selectedIdx !== "number") return;
+    const newServices = [...services];
+    if (!newServices[selectedIdx].deploy) {
+      newServices[selectedIdx].deploy = { resources: {} };
+    }
+    if (!newServices[selectedIdx].deploy!.resources) {
+      newServices[selectedIdx].deploy!.resources = {};
+    }
+    if (!newServices[selectedIdx].deploy!.resources![type]) {
+      newServices[selectedIdx].deploy!.resources![type] = {};
+    }
+    if (value.trim() === "") {
+      delete (newServices[selectedIdx].deploy!.resources![type] as any)[field];
+      if (
+        Object.keys(newServices[selectedIdx].deploy!.resources![type]!)
+          .length === 0
+      ) {
+        delete newServices[selectedIdx].deploy!.resources![type];
+      }
+      if (
+        Object.keys(newServices[selectedIdx].deploy!.resources!).length === 0
+      ) {
+        delete newServices[selectedIdx].deploy!.resources;
+        if (Object.keys(newServices[selectedIdx].deploy!).length === 0) {
+          delete newServices[selectedIdx].deploy;
+        }
+      }
+    } else {
+      (newServices[selectedIdx].deploy!.resources![type] as any)[field] = value;
+    }
+    setServices(newServices);
+  }
+
   function addNetwork() {
     const newNetworks = [...networks, defaultNetwork()];
     setNetworks(newNetworks);
@@ -770,9 +1345,10 @@ function App() {
   useEffect(() => {
     if (!composeStoreOpen) return;
 
-    const CACHE_DURATION = 60 * 60 * 1000;
+    const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
     const now = Date.now();
 
+    // Check if we have valid cached data
     if (
       composeCache.length > 0 &&
       composeCacheTimestamp &&
@@ -781,96 +1357,198 @@ function App() {
       setComposeFiles(composeCache);
       setComposeLoading(false);
       setComposeError(null);
+
+      // Still check for updates in the background
+      fetchComposeFilesFromGitHub(true);
       return;
     }
 
-    setComposeLoading(true);
-    setComposeError(null);
-
-    const workerUrl = "https://dashix-compose-store.bugattiguy527.workers.dev";
-
-    fetch(workerUrl)
-      .then((res) => res.json())
-      .then(async (data) => {
-        if (data.error) {
-          setComposeFiles([]);
-          setComposeCache([]);
-          setComposeCacheTimestamp(null);
-          localStorage.removeItem("composeStoreCache");
-          localStorage.removeItem("composeStoreCacheTimestamp");
-          setComposeLoading(false);
-          setComposeError(data.message || "Failed to load files from cache.");
-          return;
-        }
-
-        if (!data.files || data.files.length === 0) {
-          setComposeFiles([]);
-          setComposeCache([]);
-          setComposeCacheTimestamp(null);
-          localStorage.removeItem("composeStoreCache");
-          localStorage.removeItem("composeStoreCacheTimestamp");
-          setComposeLoading(false);
-          return;
-        }
-
-        const fileData = await Promise.all(
-          data.files.map(async (file: any) => {
-            try {
-              const doc = load(file.rawText) as any;
-              const servicesArray =
-                doc && doc.services
-                  ? Object.entries(doc.services).map(
-                      ([svcName, svcObj]: [string, any]) => {
-                        return {
-                          name: svcName,
-                          image: svcObj.image || "",
-                          rawService: svcObj,
-                        };
-                      }
-                    )
-                  : [];
-
-              const servicesObject = servicesArray.reduce(
-                (acc, service) => {
-                  acc[service.name] = service;
-                  return acc;
-                },
-                {} as Record<string, any>
-              );
-
-              return {
-                name: file.name,
-                url: file.url,
-                services: servicesObject,
-                networks: doc && doc.networks ? doc.networks : {},
-                volumes: doc && doc.volumes ? doc.volumes : {},
-                rawText: file.rawText,
-              };
-            } catch (e) {
-              return null;
-            }
-          })
-        );
-
-        const filteredData = fileData.filter(Boolean);
-        setComposeFiles(filteredData);
-        setComposeCache(filteredData);
-        setComposeCacheTimestamp(now);
-        localStorage.setItem("composeStoreCache", JSON.stringify(filteredData));
-        localStorage.setItem("composeStoreCacheTimestamp", now.toString());
-        setComposeLoading(false);
-      })
-      .catch(() => {
-        setComposeError("Failed to fetch compose files from cache.");
-        setComposeLoading(false);
-      });
+    fetchComposeFilesFromGitHub(false);
   }, [composeStoreOpen, composeCache, composeCacheTimestamp]);
+
+  async function fetchComposeFilesFromGitHub(
+    backgroundUpdate: boolean = false
+  ) {
+    if (!backgroundUpdate) {
+      setComposeLoading(true);
+      setComposeError(null);
+    }
+
+    const GITHUB_OWNER = "hhftechnology";
+    const GITHUB_REPO = "Compose-Store";
+    const GITHUB_PATH = "compose-files";
+    const GITHUB_BRANCH = "main";
+
+    const GITHUB_API_BASE = "https://api.github.com";
+    const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
+
+    try {
+      // Fetch directory contents from GitHub API
+      const dirResponse = await fetch(
+        `${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}`
+      );
+
+      if (!dirResponse.ok) {
+        throw new Error(`GitHub API error: ${dirResponse.statusText}`);
+      }
+
+      const directoryContents: any[] = await dirResponse.json();
+
+      // Filter only YAML files
+      const yamlFiles = directoryContents.filter(
+        (file: any) =>
+          file.type === "file" &&
+          (file.name.endsWith(".yml") || file.name.endsWith(".yaml"))
+      );
+
+      if (yamlFiles.length === 0) {
+        setComposeFiles([]);
+        setComposeCache([]);
+        setComposeCacheTimestamp(null);
+        localStorage.removeItem("composeStoreCache");
+        localStorage.removeItem("composeStoreCacheTimestamp");
+        if (!backgroundUpdate) setComposeLoading(false);
+        return;
+      }
+
+      // Load cached files with SHA for comparison
+      const cachedFiles: Record<string, { sha: string; data: any }> = {};
+      if (composeCache.length > 0) {
+        const cachedShaData = localStorage.getItem("composeStoreCacheSHA");
+        if (cachedShaData) {
+          try {
+            const parsed = JSON.parse(cachedShaData);
+            composeCache.forEach((file: any) => {
+              if (parsed[file.name]) {
+                cachedFiles[file.name] = {
+                  sha: parsed[file.name].sha,
+                  data: file,
+                };
+              }
+            });
+          } catch (e) {
+            // Invalid cache SHA data, will refetch all
+          }
+        }
+      }
+
+      // Determine which files need to be fetched (new or changed)
+      const filesToFetch = yamlFiles.filter((file: any) => {
+        const cached = cachedFiles[file.name];
+        return !cached || cached.sha !== file.sha;
+      });
+
+      // Fetch only new/changed files
+      const fileDataPromises = yamlFiles.map(async (file: any) => {
+        const cached = cachedFiles[file.name];
+
+        // Use cached data if file hasn't changed
+        if (cached && cached.sha === file.sha) {
+          return cached.data;
+        }
+
+        // Fetch new/changed file
+        try {
+          const fileUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_PATH}/${file.name}`;
+          const fileResponse = await fetch(fileUrl);
+
+          if (!fileResponse.ok) {
+            throw new Error(`Failed to fetch ${file.name}`);
+          }
+
+          const rawText = await fileResponse.text();
+          const doc = jsyaml.load(rawText) as any;
+
+          const servicesArray =
+            doc && doc.services
+              ? Object.entries(doc.services).map(
+                  ([svcName, svcObj]: [string, any]) => {
+                    return {
+                      name: svcName,
+                      image: svcObj.image || "",
+                      rawService: svcObj,
+                    };
+                  }
+                )
+              : [];
+
+          const servicesObject = servicesArray.reduce(
+            (acc, service) => {
+              acc[service.name] = service;
+              return acc;
+            },
+            {} as Record<string, any>
+          );
+
+          return {
+            name: file.name,
+            url: fileUrl,
+            services: servicesObject,
+            networks: doc && doc.networks ? doc.networks : {},
+            volumes: doc && doc.volumes ? doc.volumes : {},
+            rawText: rawText,
+            sha: file.sha,
+          };
+        } catch (e) {
+          console.error(`Error processing ${file.name}:`, e);
+          // Return cached data if available, otherwise null
+          return cached ? cached.data : null;
+        }
+      });
+
+      const fileData = await Promise.all(fileDataPromises);
+      const filteredData = fileData.filter(Boolean);
+
+      // Update cache with SHA information
+      const shaMap: Record<string, { sha: string }> = {};
+      filteredData.forEach((file: any) => {
+        if (file.sha) {
+          shaMap[file.name] = { sha: file.sha };
+        }
+      });
+
+      const now = Date.now();
+      setComposeFiles(filteredData);
+      setComposeCache(filteredData);
+      setComposeCacheTimestamp(now);
+
+      localStorage.setItem("composeStoreCache", JSON.stringify(filteredData));
+      localStorage.setItem("composeStoreCacheTimestamp", now.toString());
+      localStorage.setItem("composeStoreCacheSHA", JSON.stringify(shaMap));
+
+      if (!backgroundUpdate) setComposeLoading(false);
+
+      if (filesToFetch.length > 0 && !backgroundUpdate) {
+        console.log(
+          `Fetched ${filesToFetch.length} new/updated files from GitHub`
+        );
+      }
+    } catch (error: any) {
+      console.error("Error fetching from GitHub:", error);
+
+      // Fallback to cached data if available
+      if (composeCache.length > 0) {
+        setComposeFiles(composeCache);
+        setComposeError(`Using cached data. Error: ${error.message}`);
+      } else {
+        setComposeFiles([]);
+        setComposeError(
+          error.message || "Failed to fetch compose files from GitHub."
+        );
+      }
+
+      if (!backgroundUpdate) setComposeLoading(false);
+    }
+  }
 
   function refreshComposeStore() {
     setComposeCache([]);
     setComposeCacheTimestamp(null);
     localStorage.removeItem("composeStoreCache");
     localStorage.removeItem("composeStoreCacheTimestamp");
+    localStorage.removeItem("composeStoreCacheSHA");
+    // Trigger a fresh fetch
+    fetchComposeFilesFromGitHub(false);
   }
 
   function handleAddComposeServiceFull(
@@ -911,15 +1589,29 @@ function App() {
           })
         : [],
       volumes: Array.isArray(actualServiceData.volumes)
-        ? actualServiceData.volumes.map((v: string) => {
-            const parts = v.split(":");
-            const host = parts[0];
-            const container = parts[1] || "";
-            const read_only = parts[2] === "ro";
-            const result = { host, container, read_only };
-            return result;
+        ? actualServiceData.volumes.map((v: any) => {
+            if (typeof v === "string") {
+              const parts = v.split(":");
+              const host = parts[0];
+              const container = parts[1] || "";
+              const read_only = parts[2] === "ro";
+              return { host, container, read_only };
+            } else if (typeof v === "object" && v !== null) {
+              return {
+                host: v.source || "",
+                container: v.target || "",
+                read_only: v.read_only || false,
+              };
+            }
+            return { host: "", container: "", read_only: false };
           })
         : [],
+      volumes_syntax:
+        Array.isArray(actualServiceData.volumes) &&
+        actualServiceData.volumes.length > 0 &&
+        typeof actualServiceData.volumes[0] === "object"
+          ? "dict"
+          : "array",
       environment: Array.isArray(actualServiceData.environment)
         ? actualServiceData.environment.map((e: string) => {
             const [key, ...rest] = e.split("=");
@@ -931,6 +1623,9 @@ function App() {
               ([key, value]: [string, any]) => ({ key, value: String(value) })
             )
           : [],
+      environment_syntax: Array.isArray(actualServiceData.environment)
+        ? "array"
+        : "dict",
       healthcheck: actualServiceData.healthcheck
         ? {
             test: parseCommandArray(actualServiceData.healthcheck.test),
@@ -985,6 +1680,27 @@ function App() {
       security_opt: Array.isArray(actualServiceData.security_opt)
         ? actualServiceData.security_opt
         : [],
+      deploy: actualServiceData.deploy?.resources
+        ? {
+            resources: {
+              limits: {
+                cpus:
+                  actualServiceData.deploy.resources.limits?.cpus || undefined,
+                memory:
+                  actualServiceData.deploy.resources.limits?.memory ||
+                  undefined,
+              },
+              reservations: {
+                cpus:
+                  actualServiceData.deploy.resources.reservations?.cpus ||
+                  undefined,
+                memory:
+                  actualServiceData.deploy.resources.reservations?.memory ||
+                  undefined,
+              },
+            },
+          }
+        : undefined,
     };
     setServices((prev) => {
       const updated = [...prev, newService];
@@ -1129,7 +1845,7 @@ function App() {
   ];
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+    <>
       <SidebarProvider>
         <Sidebar>
           <SidebarUI />
@@ -1221,14 +1937,14 @@ function App() {
                     <div className="mb-4 text-xs text-muted-foreground">
                       Want to contribute?{" "}
                       <a
-                        href="https://github.com/LukeGus/Containix"
+                        href="https://github.com/shantnudon/Containix"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
-                        Add your compose files to the store
+                        Add your compose files to the repository
                       </a>{" "}
-                      - read the README for instructions.
+                      - files are automatically synced from GitHub.
                     </div>
                     <Input
                       placeholder="Search by service name or image..."
@@ -1675,7 +2391,40 @@ function App() {
                     </div>
                     {/* Volumes */}
                     <div>
-                      <Label className="mb-1 block">Volumes</Label>
+                      <div className="flex items-center justify-between mb-1">
+                        <Label className="block">Volumes</Label>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-muted-foreground">
+                            Syntax:
+                          </span>
+                          <Toggle
+                            pressed={svc.volumes_syntax === "array"}
+                            onPressedChange={(pressed) =>
+                              updateServiceField(
+                                "volumes_syntax",
+                                pressed ? "array" : "dict"
+                              )
+                            }
+                            aria-label="Array syntax"
+                            className="border rounded px-2 py-1 text-xs"
+                          >
+                            Array
+                          </Toggle>
+                          <Toggle
+                            pressed={svc.volumes_syntax === "dict"}
+                            onPressedChange={(pressed) =>
+                              updateServiceField(
+                                "volumes_syntax",
+                                pressed ? "dict" : "array"
+                              )
+                            }
+                            aria-label="Dictionary syntax"
+                            className="border rounded px-2 py-1 text-xs"
+                          >
+                            Dict
+                          </Toggle>
+                        </div>
+                      </div>
                       <div className="flex flex-col gap-2">
                         {svc.volumes.map((vol, idx) => (
                           <div key={idx} className="flex gap-2 items-center">
@@ -1741,9 +2490,40 @@ function App() {
                     </div>
                     {/* Environment Variables */}
                     <div>
-                      <Label className="mb-1 block">
-                        Environment Variables
-                      </Label>
+                      <div className="flex items-center justify-between mb-1">
+                        <Label className="block">Environment Variables</Label>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-muted-foreground">
+                            Syntax:
+                          </span>
+                          <Toggle
+                            pressed={svc.environment_syntax === "array"}
+                            onPressedChange={(pressed) =>
+                              updateServiceField(
+                                "environment_syntax",
+                                pressed ? "array" : "dict"
+                              )
+                            }
+                            aria-label="Array syntax"
+                            className="border rounded px-2 py-1 text-xs"
+                          >
+                            Array
+                          </Toggle>
+                          <Toggle
+                            pressed={svc.environment_syntax === "dict"}
+                            onPressedChange={(pressed) =>
+                              updateServiceField(
+                                "environment_syntax",
+                                pressed ? "dict" : "array"
+                              )
+                            }
+                            aria-label="Dictionary syntax"
+                            className="border rounded px-2 py-1 text-xs"
+                          >
+                            Dict
+                          </Toggle>
+                        </div>
+                      </div>
                       <div className="flex flex-col gap-2">
                         {svc.environment.map((env, idx) => (
                           <div key={idx} className="flex gap-2 items-center">
@@ -1917,6 +2697,103 @@ function App() {
                             >
                               + Add Dependency
                             </Button>
+                          </div>
+                        </div>
+                        {/* Resource Allocation */}
+                        <div>
+                          <Label className="mb-1 block">
+                            Resource Allocation
+                          </Label>
+                          <div className="space-y-4">
+                            <div>
+                              <Label className="mb-1 block text-sm font-medium">
+                                Limits
+                              </Label>
+                              <div className="flex gap-2">
+                                <div className="flex-1">
+                                  <Label className="mb-1 block text-xs text-muted-foreground">
+                                    CPUs
+                                  </Label>
+                                  <Input
+                                    value={
+                                      svc.deploy?.resources?.limits?.cpus || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateResourceField(
+                                        "limits",
+                                        "cpus",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. 0.5 or 2"
+                                  />
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="mb-1 block text-xs text-muted-foreground">
+                                    Memory
+                                  </Label>
+                                  <Input
+                                    value={
+                                      svc.deploy?.resources?.limits?.memory ||
+                                      ""
+                                    }
+                                    onChange={(e) =>
+                                      updateResourceField(
+                                        "limits",
+                                        "memory",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. 512m or 2g"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="mb-1 block text-sm font-medium">
+                                Reservations
+                              </Label>
+                              <div className="flex gap-2">
+                                <div className="flex-1">
+                                  <Label className="mb-1 block text-xs text-muted-foreground">
+                                    CPUs
+                                  </Label>
+                                  <Input
+                                    value={
+                                      svc.deploy?.resources?.reservations
+                                        ?.cpus || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateResourceField(
+                                        "reservations",
+                                        "cpus",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. 0.25 or 1"
+                                  />
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="mb-1 block text-xs text-muted-foreground">
+                                    Memory
+                                  </Label>
+                                  <Input
+                                    value={
+                                      svc.deploy?.resources?.reservations
+                                        ?.memory || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateResourceField(
+                                        "reservations",
+                                        "memory",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. 256m or 1g"
+                                  />
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         {/* Entrypoint */}
@@ -2478,8 +3355,67 @@ function App() {
             </section>
             {/* Docker Compose File Panel */}
             <section className="h-full pl-4 pr-3 pb-4 pt-2 flex flex-col bg-background box-border overflow-hidden lg:col-span-2">
-              <div className="mb-2 w-full box-border flex items-center justify-between">
+              <div className="mb-2 w-full box-border flex items-center justify-between gap-2">
                 <span className="font-bold text-lg">Docker Compose File</span>
+                <div className="flex items-center gap-2">
+                  {validationError && (
+                    <Alert variant="destructive" className="py-1 px-2 text-xs">
+                      <AlertCircle className="h-3 w-3" />
+                      <AlertTitle className="text-xs">
+                        {validationError}
+                      </AlertTitle>
+                    </Alert>
+                  )}
+                  {validationSuccess && (
+                    <Alert className="py-1 px-2 text-xs bg-green-500/20">
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      <AlertTitle className="text-xs text-green-500">
+                        Valid YAML
+                      </AlertTitle>
+                    </Alert>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={validateAndReformat}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                    Validate & Reformat
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        <Settings className="h-4 w-4 mr-1" />
+                        Convert
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={() => handleConversion("docker-run")}
+                      >
+                        To Docker Run
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleConversion("systemd")}
+                      >
+                        To Systemd Service
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleConversion("env")}>
+                        Generate .env File
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleConversion("redact")}
+                      >
+                        Redact Sensitive Data
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleConversion("komodo")}
+                      >
+                        Generate Komodo .toml (from Portainer)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
               <div
                 ref={codeFileRef}
@@ -2496,6 +3432,69 @@ function App() {
           </div>
         </SidebarInset>
       </SidebarProvider>
-    </ThemeProvider>
+
+      {/* Conversion Dialog */}
+      <Dialog
+        open={conversionDialogOpen}
+        onOpenChange={setConversionDialogOpen}
+      >
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>
+              {conversionType === "docker-run" && "Docker Run Command"}
+              {conversionType === "systemd" && "Systemd Service File"}
+              {conversionType === "env" && ".env File"}
+              {conversionType === "redact" && "Redacted Compose File"}
+              {conversionType === "komodo" && "Komodo .toml Configuration"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="relative">
+              <Textarea
+                value={conversionOutput}
+                readOnly
+                className="font-mono text-sm min-h-[300px]"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => copyToClipboard(conversionOutput)}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const filename =
+                    conversionType === "docker-run"
+                      ? "docker-run.sh"
+                      : conversionType === "systemd"
+                        ? "service.service"
+                        : conversionType === "env"
+                          ? ".env"
+                          : conversionType === "komodo"
+                            ? "komodo.toml"
+                            : "compose-redacted.yml";
+                  const mimeType =
+                    conversionType === "systemd"
+                      ? "text/plain"
+                      : conversionType === "env"
+                        ? "text/plain"
+                        : conversionType === "komodo"
+                          ? "text/plain"
+                          : "text/yaml";
+                  downloadFile(conversionOutput, filename, mimeType);
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsOfServiceRouteImport } from './routes/terms-of-service'
+import { Route as SchedulerBuilderRouteImport } from './routes/scheduler-builder'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ConfigBuilderRouteImport } from './routes/config-builder'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DockerComposeBuilderRouteImport } from './routes/docker/compose-builder'
 
@@ -19,9 +21,19 @@ const TermsOfServiceRoute = TermsOfServiceRouteImport.update({
   path: '/terms-of-service',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SchedulerBuilderRoute = SchedulerBuilderRouteImport.update({
+  id: '/scheduler-builder',
+  path: '/scheduler-builder',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfigBuilderRoute = ConfigBuilderRouteImport.update({
+  id: '/config-builder',
+  path: '/config-builder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,39 +49,61 @@ const DockerComposeBuilderRoute = DockerComposeBuilderRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/config-builder': typeof ConfigBuilderRoute
   '/privacy': typeof PrivacyRoute
+  '/scheduler-builder': typeof SchedulerBuilderRoute
   '/terms-of-service': typeof TermsOfServiceRoute
   '/docker/compose-builder': typeof DockerComposeBuilderRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/config-builder': typeof ConfigBuilderRoute
   '/privacy': typeof PrivacyRoute
+  '/scheduler-builder': typeof SchedulerBuilderRoute
   '/terms-of-service': typeof TermsOfServiceRoute
   '/docker/compose-builder': typeof DockerComposeBuilderRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/config-builder': typeof ConfigBuilderRoute
   '/privacy': typeof PrivacyRoute
+  '/scheduler-builder': typeof SchedulerBuilderRoute
   '/terms-of-service': typeof TermsOfServiceRoute
   '/docker/compose-builder': typeof DockerComposeBuilderRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/privacy' | '/terms-of-service' | '/docker/compose-builder'
+  fullPaths:
+    | '/'
+    | '/config-builder'
+    | '/privacy'
+    | '/scheduler-builder'
+    | '/terms-of-service'
+    | '/docker/compose-builder'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/privacy' | '/terms-of-service' | '/docker/compose-builder'
+  to:
+    | '/'
+    | '/config-builder'
+    | '/privacy'
+    | '/scheduler-builder'
+    | '/terms-of-service'
+    | '/docker/compose-builder'
   id:
     | '__root__'
     | '/'
+    | '/config-builder'
     | '/privacy'
+    | '/scheduler-builder'
     | '/terms-of-service'
     | '/docker/compose-builder'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConfigBuilderRoute: typeof ConfigBuilderRoute
   PrivacyRoute: typeof PrivacyRoute
+  SchedulerBuilderRoute: typeof SchedulerBuilderRoute
   TermsOfServiceRoute: typeof TermsOfServiceRoute
   DockerComposeBuilderRoute: typeof DockerComposeBuilderRoute
 }
@@ -83,11 +117,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsOfServiceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/scheduler-builder': {
+      id: '/scheduler-builder'
+      path: '/scheduler-builder'
+      fullPath: '/scheduler-builder'
+      preLoaderRoute: typeof SchedulerBuilderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/config-builder': {
+      id: '/config-builder'
+      path: '/config-builder'
+      fullPath: '/config-builder'
+      preLoaderRoute: typeof ConfigBuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -109,7 +157,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConfigBuilderRoute: ConfigBuilderRoute,
   PrivacyRoute: PrivacyRoute,
+  SchedulerBuilderRoute: SchedulerBuilderRoute,
   TermsOfServiceRoute: TermsOfServiceRoute,
   DockerComposeBuilderRoute: DockerComposeBuilderRoute,
 }

@@ -5,8 +5,8 @@ on:
     branches:
       - development
     paths-ignore:
-      - '**.md'
-      - '.gitignore'
+      - "**.md"
+      - ".gitignore"
   workflow_dispatch:
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: "18"
 
       - name: Install frontend dependencies & build
         run: |
@@ -39,7 +39,7 @@ jobs:
             src/backend/database.cjs
             package.json
             package-lock.json
-          target: /var/www/dashix.dev
+          target: /var/www/Dock-Dploy.dev
 
       - name: Restart backend with systemd
         uses: appleboy/ssh-action@master
@@ -48,7 +48,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            sudo systemctl restart dashix-backend
+            sudo systemctl restart Dock-Dploy-backend
 
       - name: Install backend dependencies
         uses: appleboy/ssh-action@master
@@ -57,7 +57,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /var/www/dashix.dev
+            cd /var/www/Dock-Dploy.dev
             npm install
 
       - name: Restart nginx

@@ -1,6 +1,6 @@
 {
-  "short_name": "TanStack App",
-  "name": "Create TanStack App Sample",
+  "short_name": "Dock-Dploy",
+  "name": "Build Docker Compose Files",
   "icons": [
     {
       "src": "favicon.ico",
