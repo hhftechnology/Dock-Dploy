@@ -1,0 +1,92 @@
+name: Build and Push Docker Image
+
+on:
+    push:
+        branches:
+            - main
+        tags:
+            - "v*"
+    pull_request:
+        branches:
+            - main
+    workflow_dispatch:
+
+env:
+    REGISTRY_DOCKERHUB: docker.io
+    REGISTRY_GHCR: ghcr.io
+
+jobs:
+    build-and-push:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set image name
+              id: image
+              run: |
+                  IMAGE_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+                  echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Log in to Docker Hub
+              if: github.event_name != 'pull_request'
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.dockerhub_username }}
+                  password: ${{ secrets.dockerhub_token }}
+
+            - name: Log in to GitHub Container Registry
+              if: github.event_name != 'pull_request'
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY_GHCR }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract metadata (tags, labels) for Docker
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: |
+                      ${{ env.REGISTRY_DOCKERHUB }}/${{ secrets.dockerhub_username }}/${{ steps.image.outputs.name }}
+                      ${{ env.REGISTRY_GHCR }}/${{ github.repository }}
+                  tags: |
+                      type=ref,event=branch
+                      type=ref,event=pr
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
+                      type=semver,pattern={{major}}
+                      type=sha,prefix={{branch}}-
+                      type=raw,value=latest,enable={{is_default_branch}}
+
+            - name: Build and push Docker image to Docker Hub
+              if: github.event_name != 'pull_request'
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  platforms: linux/amd64,linux/arm64
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Build Docker image (no push) for PR
+              if: github.event_name == 'pull_request'
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  push: false
+                  tags: ${{ env.REGISTRY_DOCKERHUB }}/${{ secrets.dockerhub_username }}/${{ steps.image.outputs.name }}:pr-${{ github.event.number }}
+                  platforms: linux/amd64,linux/arm64
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max

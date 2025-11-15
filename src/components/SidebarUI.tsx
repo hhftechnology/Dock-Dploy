@@ -1,7 +1,5 @@
 import { ChevronDown, Container, FileText, Clock } from "lucide-react";
-
 import { useNavigate, useRouter } from "@tanstack/react-router";
-
 import {
   SidebarContent,
   SidebarGroup,
@@ -11,15 +9,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
+  SidebarFooter,
 } from "./ui/sidebar";
-
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
 } from "./ui/collapsible";
-
-import { Separator } from "./ui/separator";
 
 const items = [
   {
@@ -48,65 +44,85 @@ const groupedItems = items.reduce<Record<string, typeof items>>((acc, item) => {
   return acc;
 }, {});
 
-export function SidebarUI({}: {}) {
+export function SidebarUI() {
   const navigate = useNavigate();
   const router = useRouter();
   const location = router.state.location;
 
   return (
     <>
-      <SidebarHeader>
-        <div className="flex flex-col items-center w-full">
-          <div className="flex items-center justify-center w-full py-2 -mt-1">
-            <span className="font-bold text-lg tracking-tight">Dock-Dploy</span>
+      <SidebarHeader className="border-b border-sidebar-border">
+        <div className="flex items-center gap-2 px-2 py-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+            <Container className="h-4 w-4" />
           </div>
-          <Separator className="w-full mb-0.5" />
+          <div className="grid flex-1 text-left text-sm leading-tight">
+            <span className="truncate font-semibold">Dock-Dploy</span>
+            <span className="truncate text-xs text-sidebar-foreground/70">
+              Setup Tools
+            </span>
+          </div>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="gap-y-0 pt-0">
-        {Object.entries(groupedItems).map(([groupName, groupItems], idx) => (
-          <Collapsible
-            key={groupName}
-            defaultOpen
-            className={`group/collapsible mb-0${idx === 0 ? " -mt-2" : ""}`}
-          >
-            <SidebarGroup>
-              <SidebarGroupLabel asChild>
-                <CollapsibleTrigger className="flex items-center cursor-pointer">
-                  {groupName}
-                  <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                </CollapsibleTrigger>
-              </SidebarGroupLabel>
-              <CollapsibleContent>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {groupItems.map((item) => {
-                      const isActive = location.pathname === item.url;
+      <SidebarContent>
+        {Object.entries(groupedItems).map(([groupName, groupItems]) => {
+          const isGroupOpen = groupItems.some(
+            (item) => location.pathname === item.url
+          );
 
-                      return (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton
-                            className={isActive ? "bg-muted" : ""}
-                            onClick={() => {
-                              if (!isActive) {
-                                navigate({ to: item.url });
-                              }
-                            }}
-                          >
-                            <item.icon />
-                            <span>{item.title}</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </CollapsibleContent>
-            </SidebarGroup>
-          </Collapsible>
-        ))}
+          return (
+            <Collapsible
+              key={groupName}
+              defaultOpen={isGroupOpen}
+              className="group/collapsible"
+            >
+              <SidebarGroup>
+                <SidebarGroupLabel asChild>
+                  <CollapsibleTrigger className="w-full">
+                    <div className="flex items-center justify-between w-full">
+                      <span>{groupName}</span>
+                      <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                    </div>
+                  </CollapsibleTrigger>
+                </SidebarGroupLabel>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {groupItems.map((item) => {
+                        const isActive = location.pathname === item.url;
+
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton
+                              tooltip={item.title}
+                              isActive={isActive}
+                              onClick={() => {
+                                if (!isActive) {
+                                  navigate({ to: item.url });
+                                }
+                              }}
+                            >
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.title}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
+          );
+        })}
       </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border p-2">
+        <div className="px-2 py-1.5 text-xs text-sidebar-foreground/70">
+          © {new Date().getFullYear()} Dock-Dploy
+        </div>
+      </SidebarFooter>
     </>
   );
 }

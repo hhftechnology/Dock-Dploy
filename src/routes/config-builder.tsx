@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CodeEditor } from "../components/CodeEditor";
 import { SidebarUI } from "../components/SidebarUI";
@@ -55,7 +55,7 @@ function App() {
     tags: [],
   });
 
-  function generateHomepageConfig(items: ConfigItem[]): string {
+  const generateHomepageConfig = useCallback((items: ConfigItem[]): string => {
     const config: any = {
       services: items.map((item) => ({
         Name: item.name,
@@ -67,9 +67,15 @@ function App() {
       })),
     };
     return yaml.dump(config, { indent: 2 });
-  }
+  }, []);
 
-  function addItem() {
+  const updateOutput = useCallback(() => {
+    if (configType === "homepage") {
+      setOutput(generateHomepageConfig(config.items));
+    }
+  }, [configType, config.items, generateHomepageConfig]);
+
+  const addItem = useCallback(() => {
     if (!currentItem.name || !currentItem.url) return;
     setConfig({
       items: [...config.items, { ...currentItem }],
@@ -82,40 +88,40 @@ function App() {
       category: "",
       tags: [],
     });
-    updateOutput();
-  }
+  }, [currentItem, config.items]);
 
-  function removeItem(index: number) {
+  const removeItem = useCallback((index: number) => {
     const newItems = config.items.filter((_, i) => i !== index);
     setConfig({ items: newItems });
-    updateOutput();
-  }
+  }, [config.items]);
 
-  function updateOutput() {
-    if (configType === "homepage") {
-      setOutput(generateHomepageConfig(config.items));
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error("Failed to copy to clipboard:", error);
     }
-  }
+  }, []);
 
-  function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
-  }
-
-  function downloadFile(content: string, filename: string, mimeType: string) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  const downloadFile = useCallback((content: string, filename: string, mimeType: string) => {
+    try {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download file:", error);
+    }
+  }, []);
 
   useEffect(() => {
     updateOutput();
-  }, [config, configType]);
+  }, [updateOutput]);
 
   return (
     <SidebarProvider>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CodeEditor } from "../components/CodeEditor";
 import { SidebarUI } from "../components/SidebarUI";
@@ -51,14 +51,14 @@ function App() {
   });
   const [output, setOutput] = useState("");
 
-  function generateCron(config: ScheduleConfig): string {
+  const generateCron = useCallback((config: ScheduleConfig): string => {
     const user = config.user || "root";
     const workingDir = config.workingDir ? `cd ${config.workingDir} && ` : "";
     const command = `${workingDir}${config.command}`;
     return `${config.schedule} ${user} ${command}`;
-  }
+  }, []);
 
-  function generateGitHubActions(config: ScheduleConfig): string {
+  const generateGitHubActions = useCallback((config: ScheduleConfig): string => {
     const cronSchedule = config.schedule.split(" ").slice(0, 5).join(" ");
     return `name: ${config.name || "Scheduled Task"}
 
@@ -74,9 +74,9 @@ jobs:
         run: |
           ${config.command}
 `;
-  }
+  }, []);
 
-  function generateSystemdTimer(config: ScheduleConfig): string {
+  const generateSystemdTimer = useCallback((config: ScheduleConfig): string => {
     const serviceName = config.name.replace(/[^a-zA-Z0-9]/g, "-");
     const timerName = `${serviceName}.timer`;
     const serviceFileName = `${serviceName}.service`;
@@ -85,7 +85,7 @@ jobs:
     const cronParts = config.schedule.split(" ");
     let onCalendar = "";
     if (cronParts.length >= 5) {
-      const [minute, hour, day, month, weekday] = cronParts;
+      const [minute, hour, day, _month, weekday] = cronParts;
       onCalendar = `OnCalendar=`;
       if (weekday !== "*") {
         onCalendar += `*-*-* ${hour}:${minute}:00`;
@@ -129,9 +129,9 @@ ${serviceUnit}
 # 3. Run: sudo systemctl daemon-reload
 # 4. Run: sudo systemctl enable --now ${timerName}
 `;
-  }
+  }, []);
 
-  function updateOutput() {
+  const updateOutput = useCallback(() => {
     let result = "";
     switch (scheduleType) {
       case "cron":
@@ -145,34 +145,41 @@ ${serviceUnit}
         break;
     }
     setOutput(result);
-  }
+  }, [scheduleType, config, generateCron, generateGitHubActions, generateSystemdTimer]);
 
   useEffect(() => {
     setConfig((prev) => ({ ...prev, type: scheduleType }));
-    updateOutput();
   }, [scheduleType]);
 
   useEffect(() => {
     updateOutput();
-  }, [config]);
+  }, [updateOutput]);
 
-  function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
-  }
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error("Failed to copy to clipboard:", error);
+    }
+  }, []);
 
-  function downloadFile(content: string, filename: string, mimeType: string) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  const downloadFile = useCallback((content: string, filename: string, mimeType: string) => {
+    try {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download file:", error);
+    }
+  }, []);
 
-  function getFilename(): string {
+  const getFilename = useCallback((): string => {
     switch (scheduleType) {
       case "cron":
         return "crontab.txt";
@@ -183,7 +190,7 @@ ${serviceUnit}
       default:
         return "schedule.txt";
     }
-  }
+  }, [scheduleType, config.name]);
 
   return (
     <SidebarProvider>

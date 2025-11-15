@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useCallback } from "react";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -24,70 +25,82 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
+const FEATURES = [
+  {
+    title: "Docker Compose Builder",
+    description:
+      "Build and manage Docker Compose files with an intuitive interface. Validate, reformat, and convert to various formats.",
+    icon: Container,
+    url: "/docker/compose-builder",
+    highlights: [
+      "Visual compose file builder",
+      "Validate & reformat YAML",
+      "Convert to docker run commands",
+      "Export to systemd services",
+      "Resource allocation support",
+      "Dual syntax support (array/dict)",
+    ],
+  },
+  {
+    title: "Config Builder",
+    description:
+      "Create configuration files for popular self-hosted tools like Homepage.dev and more.",
+    icon: FileText,
+    url: "/config-builder",
+    highlights: [
+      "Homepage.dev config generator",
+      "YAML configuration builder",
+      "Easy-to-use interface",
+      "Export and download",
+    ],
+  },
+  {
+    title: "Scheduler Builder",
+    description:
+      "Generate schedulers for Cron, GitHub Actions, Systemd timers, and more with a simple form.",
+    icon: Clock,
+    url: "/scheduler-builder",
+    highlights: [
+      "Cron expression generator",
+      "GitHub Actions workflows",
+      "Systemd timer units",
+      "Flexible scheduling options",
+    ],
+  },
+] as const;
+
+const BENEFITS = [
+  {
+    icon: Zap,
+    title: "Fast & Efficient",
+    description: "Build complex configurations in minutes, not hours",
+  },
+  {
+    icon: Shield,
+    title: "Validated Output",
+    description: "All generated files are validated for correctness",
+  },
+  {
+    icon: Code,
+    title: "Developer Friendly",
+    description: "Clean, readable code output with proper formatting",
+  },
+] as const;
+
 function LandingPage() {
   const navigate = useNavigate();
 
-  const features = [
-    {
-      title: "Docker Compose Builder",
-      description:
-        "Build and manage Docker Compose files with an intuitive interface. Validate, reformat, and convert to various formats.",
-      icon: Container,
-      url: "/docker/compose-builder",
-      highlights: [
-        "Visual compose file builder",
-        "Validate & reformat YAML",
-        "Convert to docker run commands",
-        "Export to systemd services",
-        "Resource allocation support",
-        "Dual syntax support (array/dict)",
-      ],
-    },
-    {
-      title: "Config Builder",
-      description:
-        "Create configuration files for popular self-hosted tools like Homepage.dev and more.",
-      icon: FileText,
-      url: "/config-builder",
-      highlights: [
-        "Homepage.dev config generator",
-        "YAML configuration builder",
-        "Easy-to-use interface",
-        "Export and download",
-      ],
-    },
-    {
-      title: "Scheduler Builder",
-      description:
-        "Generate schedulers for Cron, GitHub Actions, Systemd timers, and more with a simple form.",
-      icon: Clock,
-      url: "/scheduler-builder",
-      highlights: [
-        "Cron expression generator",
-        "GitHub Actions workflows",
-        "Systemd timer units",
-        "Flexible scheduling options",
-      ],
-    },
-  ];
+  const handleComposeBuilder = useCallback(() => {
+    navigate({ to: "/docker/compose-builder" });
+  }, [navigate]);
 
-  const benefits = [
-    {
-      icon: Zap,
-      title: "Fast & Efficient",
-      description: "Build complex configurations in minutes, not hours",
-    },
-    {
-      icon: Shield,
-      title: "Validated Output",
-      description: "All generated files are validated for correctness",
-    },
-    {
-      icon: Code,
-      title: "Developer Friendly",
-      description: "Clean, readable code output with proper formatting",
-    },
-  ];
+  const handleGitHub = useCallback(() => {
+    window.open("https://github.com/hhftechnology/Dock-Dploy", "_blank");
+  }, []);
+
+  const handleDiscord = useCallback(() => {
+    window.open("https://discord.gg/HDCt9MjyMJ", "_blank");
+  }, []);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -112,7 +125,7 @@ function LandingPage() {
               <Button
                 size="lg"
                 className="text-lg px-8 py-6"
-                onClick={() => navigate({ to: "/docker/compose-builder" })}
+                onClick={handleComposeBuilder}
               >
                 Get Started
                 <ArrowRight className="ml-2 h-5 w-5" />
@@ -121,12 +134,7 @@ function LandingPage() {
                 size="lg"
                 variant="outline"
                 className="text-lg px-8 py-6"
-                onClick={() =>
-                  window.open(
-                    "https://github.com/hhftechnology/Dock-Dploy",
-                    "_blank"
-                  )
-                }
+                onClick={handleGitHub}
               >
                 <Github className="mr-2 h-5 w-5" />
                 View on GitHub
@@ -149,7 +157,7 @@ function LandingPage() {
             </p>
           </div>
           <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => {
+            {FEATURES.map((feature) => {
               const Icon = feature.icon;
               return (
                 <Card
@@ -215,7 +223,7 @@ function LandingPage() {
             </p>
           </div>
           <div className="grid gap-8 md:grid-cols-3">
-            {benefits.map((benefit) => {
+            {BENEFITS.map((benefit) => {
               const Icon = benefit.icon;
               return (
                 <div
@@ -253,7 +261,7 @@ function LandingPage() {
               <Button
                 size="lg"
                 className="text-lg px-8 py-6"
-                onClick={() => navigate({ to: "/docker/compose-builder" })}
+                onClick={handleComposeBuilder}
               >
                 Start Building
                 <ArrowRight className="ml-2 h-5 w-5" />
@@ -262,9 +270,7 @@ function LandingPage() {
                 size="lg"
                 variant="outline"
                 className="text-lg px-8 py-6"
-                onClick={() =>
-                  window.open("https://discord.gg/HDCt9MjyMJ", "_blank")
-                }
+                onClick={handleDiscord}
               >
                 <MessageCircle className="mr-2 h-5 w-5" />
                 Join Discord

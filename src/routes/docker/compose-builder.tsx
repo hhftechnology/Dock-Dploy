@@ -19,6 +19,14 @@ import {
   DropdownMenuItem,
 } from "../../components/ui/dropdown-menu";
 import { Toggle } from "../../components/ui/toggle";
+import { Checkbox } from "../../components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import jsyaml from "js-yaml";
 import {
   SidebarProvider,
@@ -31,7 +39,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "../../components/ui/dialog";
 import { Alert, AlertTitle, AlertDescription } from "../../components/ui/alert";
 import { Textarea } from "../../components/ui/textarea";
@@ -139,6 +146,129 @@ interface VolumeConfig {
   driver_opts_o: string;
 }
 
+// VPN Configuration Interfaces
+interface TailscaleConfig {
+  authKey: string;
+  hostname: string;
+  acceptDns: boolean;
+  authOnce: boolean;
+  userspace: boolean;
+  exitNode: string;
+  exitNodeAllowLan: boolean;
+  enableServe: boolean;
+  serveConfig: string; // JSON string
+  certDomain: string;
+  serveTargetService: string;
+  serveExternalPort: string;
+  serveInternalPort: string;
+  servePath: string;
+  serveProtocol: "HTTPS" | "HTTP";
+}
+
+interface NewtConfig {
+  endpoint: string;
+  newtId: string;
+  newtSecret: string;
+  networkName: string;
+}
+
+interface CloudflaredConfig {
+  tunnelToken: string;
+  noAutoupdate: boolean;
+}
+
+interface WireguardConfig {
+  configPath: string;
+  interfaceName: string;
+}
+
+interface ZerotierConfig {
+  networkId: string;
+  identityPath: string;
+}
+
+interface NetbirdConfig {
+  setupKey: string;
+  managementUrl: string;
+}
+
+interface VPNConfig {
+  enabled: boolean;
+  type: "tailscale" | "newt" | "cloudflared" | "wireguard" | "zerotier" | "netbird" | null;
+  tailscale?: TailscaleConfig;
+  newt?: NewtConfig;
+  cloudflared?: CloudflaredConfig;
+  wireguard?: WireguardConfig;
+  zerotier?: ZerotierConfig;
+  netbird?: NetbirdConfig;
+  servicesUsingVpn: string[]; // Service names that should use VPN
+}
+
+function defaultTailscaleConfig(): TailscaleConfig {
+  return {
+    authKey: "",
+    hostname: "",
+    acceptDns: false,
+    authOnce: true,
+    userspace: false,
+    exitNode: "",
+    exitNodeAllowLan: false,
+    enableServe: false,
+    serveConfig: "",
+    certDomain: "",
+    serveTargetService: "",
+    serveExternalPort: "443",
+    serveInternalPort: "8080",
+    servePath: "/",
+    serveProtocol: "HTTPS",
+  };
+}
+
+function defaultNewtConfig(): NewtConfig {
+  return {
+    endpoint: "https://app.pangolin.net",
+    newtId: "",
+    newtSecret: "",
+    networkName: "newt",
+  };
+}
+
+function defaultCloudflaredConfig(): CloudflaredConfig {
+  return {
+    tunnelToken: "",
+    noAutoupdate: true,
+  };
+}
+
+function defaultWireguardConfig(): WireguardConfig {
+  return {
+    configPath: "/etc/wireguard/wg0.conf",
+    interfaceName: "wg0",
+  };
+}
+
+function defaultZerotierConfig(): ZerotierConfig {
+  return {
+    networkId: "",
+    identityPath: "/var/lib/zerotier-one",
+  };
+}
+
+function defaultNetbirdConfig(): NetbirdConfig {
+  return {
+    setupKey: "",
+    managementUrl: "",
+  };
+}
+
+function defaultVPNConfig(): VPNConfig {
+  return {
+    enabled: false,
+    type: null,
+    servicesUsingVpn: [],
+  };
+}
+
 function defaultService(): ServiceConfig {
   return {
     name: "",
@@ -216,6 +346,7 @@ function App() {
   const [yaml, setYaml] = useState("");
   const [networks, setNetworks] = useState<NetworkConfig[]>([]);
   const [volumes, setVolumes] = useState<VolumeConfig[]>([]);
+  const [vpnConfig, setVpnConfig] = useState<VPNConfig>(defaultVPNConfig());
   const [composeStoreOpen, setComposeStoreOpen] = useState(false);
   const [composeFiles, setComposeFiles] = useState<any[]>([]);
   const [composeLoading, setComposeLoading] = useState(false);
@@ -251,11 +382,248 @@ function App() {
     return () => ro.disconnect();
   }, [codeFileRef]);
 
+  // VPN Helper Functions
+  function generateTailscaleServeConfig(
+    _targetService: string,
+    externalPort: string,
+    internalPort: string,
+    path: string,
+    protocol: "HTTPS" | "HTTP",
+    certDomain: string
+  ): string {
+    const config: any = {
+      TCP: {
+        [externalPort]: {
+          HTTPS: protocol === "HTTPS",
+        },
+      },
+    };
+
+    if (protocol === "HTTPS") {
+      config.Web = {
+        [`${certDomain || "${TS_CERT_DOMAIN}"}:${externalPort}`]: {
+          Handlers: {
+            [path]: {
+              Proxy: `http://127.0.0.1:${internalPort}`,
+            },
+          },
+        },
+      };
+    } else {
+      config.TCP[externalPort] = {
+        HTTP: true,
+        Handlers: {
+          [path]: {
+            Proxy: `http://127.0.0.1:${internalPort}`,
+          },
+        },
+      };
+    }
+
+    return JSON.stringify(config, null, 2);
+  }
+
+  function getVpnServiceName(vpnType: string): string {
+    return vpnType;
+  }
+
+  function generateVpnService(vpnConfig: VPNConfig | undefined): any {
+    if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return null;
+
+    const serviceName = getVpnServiceName(vpnConfig.type);
+    let service: any = {
+      restart: "always",
+    };
+
+    switch (vpnConfig.type) {
+      case "tailscale": {
+        const ts = vpnConfig.tailscale!;
+        service.image = "tailscale/tailscale:latest";
+        service.privileged = true;
+        service.volumes = [
+          "tailscale:/var/lib/tailscale",
+          "/dev/net/tun:/dev/net/tun",
+        ];
+        service.environment = {
+          TS_STATE_DIR: "/var/lib/tailscale",
+          TS_ACCEPT_DNS: ts.acceptDns ? "true" : "false",
+          TS_AUTH_ONCE: ts.authOnce ? "true" : "false",
+          TS_USERSPACE: ts.userspace ? "true" : "false",
+          TS_AUTHKEY: ts.authKey ? "${TS_AUTHKEY}" : undefined,
+          TS_HOSTNAME: ts.hostname || undefined,
+        };
+
+        if (ts.exitNode) {
+          service.environment.TS_EXTRA_ARGS = `--exit-node=${ts.exitNode}${ts.exitNodeAllowLan ? " --exit-node-allow-lan-access" : ""}`;
+        }
+
+        if (ts.enableServe && ts.serveTargetService) {
+          service.environment.TS_SERVE_CONFIG = "/etc/tailscale/serve.json";
+          service.configs = [
+            {
+              source: "serve-config",
+              target: "/etc/tailscale/serve.json",
+            },
+          ];
+        }
+
+        // Remove undefined environment variables
+        Object.keys(service.environment).forEach(
+          (key) =>
+            service.environment[key] === undefined &&
+            delete service.environment[key]
+        );
+        break;
+      }
+      case "newt": {
+        const newt = vpnConfig.newt!;
+        service.image = "fosrl/newt";
+        service.container_name = "newt";
+        service.environment = {
+          PANGOLIN_ENDPOINT: newt.endpoint,
+          NEWT_ID: newt.newtId ? "${NEWT_ID}" : undefined,
+          NEWT_SECRET: newt.newtSecret ? "${NEWT_SECRET}" : undefined,
+        };
+        service.networks = [newt.networkName];
+        Object.keys(service.environment).forEach(
+          (key) =>
+            service.environment[key] === undefined &&
+            delete service.environment[key]
+        );
+        break;
+      }
+      case "cloudflared": {
+        const cf = vpnConfig.cloudflared!;
+        service.image = "cloudflare/cloudflared";
+        service.command = cf.noAutoupdate
+          ? "--no-autoupdate tunnel run"
+          : "tunnel run";
+        service.environment = {
+          TUNNEL_TOKEN: cf.tunnelToken ? "${TUNNEL_TOKEN}" : undefined,
+        };
+        Object.keys(service.environment).forEach(
+          (key) =>
+            service.environment[key] === undefined &&
+            delete service.environment[key]
+        );
+        break;
+      }
+      case "wireguard": {
+        const wg = vpnConfig.wireguard!;
+        service.image = "linuxserver/wireguard:latest";
+        service.cap_add = ["NET_ADMIN", "SYS_MODULE"];
+        service.environment = {
+          PUID: "1000",
+          PGID: "1000",
+          TZ: "Etc/UTC",
+        };
+        service.sysctls = ["net.ipv4.conf.all.src_valid_mark=1"];
+        service.volumes = [wg.configPath + ":/config"];
+        break;
+      }
+      case "zerotier": {
+        const zt = vpnConfig.zerotier!;
+        service.image = "zerotier/zerotier:latest";
+        service.privileged = true;
+        service.networks = ["host"];
+        service.volumes = [zt.identityPath + ":/var/lib/zerotier-one"];
+        service.environment = {
+          ZT_NC_NETWORK: zt.networkId ? "${ZT_NETWORK_ID}" : undefined,
+        };
+        Object.keys(service.environment).forEach(
+          (key) =>
+            service.environment[key] === undefined &&
+            delete service.environment[key]
+        );
+        break;
+      }
+      case "netbird": {
+        const nb = vpnConfig.netbird!;
+        service.image = "netbirdio/netbird:latest";
+        service.privileged = true;
+        service.cap_add = ["NET_ADMIN", "SYS_MODULE"];
+        service.sysctls = ["net.ipv4.ip_forward=1", "net.ipv6.conf.all.forwarding=1"];
+        service.environment = {
+          NETBIRD_SETUP_KEY: nb.setupKey ? "${NETBIRD_SETUP_KEY}" : undefined,
+          NETBIRD_MANAGEMENT_URL: nb.managementUrl || undefined,
+        };
+        Object.keys(service.environment).forEach(
+          (key) =>
+            service.environment[key] === undefined &&
+            delete service.environment[key]
+        );
+        break;
+      }
+    }
+
+    return { [serviceName]: service };
+  }
+
+  function getVpnVolumes(vpnConfig: VPNConfig | undefined): VolumeConfig[] {
+    if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return [];
+
+    const volumes: VolumeConfig[] = [];
+
+    switch (vpnConfig.type) {
+      case "tailscale": {
+        volumes.push({
+          name: "tailscale",
+          driver: "",
+          driver_opts: [],
+          labels: [],
+          external: false,
+          name_external: "",
+          driver_opts_type: "",
+          driver_opts_device: "",
+          driver_opts_o: "",
+        });
+        break;
+      }
+    }
+
+    return volumes;
+  }
+
+  function getVpnNetworks(vpnConfig: VPNConfig | undefined): NetworkConfig[] {
+    if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return [];
+
+    const networks: NetworkConfig[] = [];
+
+    switch (vpnConfig.type) {
+      case "newt": {
+        const newt = vpnConfig.newt!;
+        networks.push({
+          name: newt.networkName,
+          driver: "",
+          driver_opts: [],
+          attachable: false,
+          labels: [],
+          external: true,
+          name_external: newt.networkName,
+          internal: false,
+          enable_ipv6: false,
+          ipam: {
+            driver: "",
+            config: [],
+            options: [],
+          },
+        });
+        break;
+      }
+    }
+
+    return networks;
+  }
+
   function generateYaml(
     services: ServiceConfig[],
     networks: NetworkConfig[],
-    volumes: VolumeConfig[]
+    volumes: VolumeConfig[],
+    vpnConfig?: VPNConfig
   ): string {
+    // Ensure vpnConfig has a default value
+    const vpn = vpnConfig || defaultVPNConfig();
+    
     const compose: any = { services: {} };
     services.forEach((svc) => {
       if (!svc.name) return;
@@ -279,12 +647,28 @@ function App() {
         });
       };
 
+      // Check if service should use VPN
+      const shouldUseVpn = vpn.enabled && 
+        vpnConfig?.type && 
+        vpn.servicesUsingVpn.includes(svc.name);
+      
+      const vpnServiceName = vpn.enabled && vpn.type 
+        ? getVpnServiceName(vpn.type) 
+        : null;
+      
+      // VPN types that use network_mode
+      const usesNetworkMode = vpn.enabled && 
+        vpn.type && 
+        ["tailscale", "cloudflared"].includes(vpn.type) &&
+        shouldUseVpn;
+
       compose.services[svc.name] = {
         image: svc.image || undefined,
         container_name: svc.container_name || undefined,
         command: svc.command ? parseCommandString(svc.command) : undefined,
         restart: svc.restart || undefined,
-        ports: svc.ports.length
+        // If using VPN with network_mode, don't expose ports (they go through VPN)
+        ports: usesNetworkMode ? undefined : (svc.ports.length
           ? svc.ports
               .map((p) =>
                 p.host && p.container
@@ -294,6 +678,10 @@ function App() {
                     : undefined
               )
               .filter(Boolean)
+          : undefined),
+        // If using VPN with network_mode, set network_mode instead of networks
+        network_mode: usesNetworkMode && vpnServiceName 
+          ? `service:${vpnServiceName}` 
           : undefined,
         volumes: svc.volumes.length
           ? svc.volumes_syntax === "dict"
@@ -375,10 +763,13 @@ function App() {
           svc.dns && svc.dns.filter(Boolean).length
             ? svc.dns.filter(Boolean)
             : undefined,
-        networks:
-          svc.networks && svc.networks.filter(Boolean).length
-            ? svc.networks.filter(Boolean)
-            : undefined,
+        networks: usesNetworkMode 
+          ? undefined 
+          : (shouldUseVpn && vpn.type === "newt" && vpn.newt
+              ? [vpn.newt.networkName]
+              : (svc.networks && svc.networks.filter(Boolean).length
+                  ? svc.networks.filter(Boolean)
+                  : undefined)),
         user: svc.user ? `"${svc.user}"` : undefined,
         working_dir: svc.working_dir || undefined,
         labels:
@@ -429,6 +820,50 @@ function App() {
           delete compose.services[name][k]
       );
     }
+    
+    // Add VPN service if enabled
+    if (vpn.enabled && vpn.type) {
+      const vpnService = generateVpnService(vpn);
+      if (vpnService) {
+        Object.assign(compose.services, vpnService);
+      }
+    }
+    
+    // Add VPN volumes
+    const vpnVolumes = getVpnVolumes(vpn);
+    if (vpnVolumes.length > 0) {
+      volumes = [...volumes, ...vpnVolumes];
+    }
+    
+    // Add VPN networks
+    const vpnNetworks = getVpnNetworks(vpn);
+    if (vpnNetworks.length > 0) {
+      networks = [...networks, ...vpnNetworks];
+    }
+    
+    // Add Tailscale serve configs if enabled
+    if (vpn.enabled && 
+        vpn.type === "tailscale" && 
+        vpn.tailscale?.enableServe && 
+        vpn.tailscale?.serveTargetService) {
+      const ts = vpn.tailscale;
+      const serveConfig = generateTailscaleServeConfig(
+        ts.serveTargetService,
+        ts.serveExternalPort,
+        ts.serveInternalPort,
+        ts.servePath,
+        ts.serveProtocol,
+        ts.certDomain
+      );
+      
+      if (!compose.configs) {
+        compose.configs = {};
+      }
+      compose.configs["serve-config"] = {
+        content: serveConfig,
+      };
+    }
+    
     if (networks.length) {
       compose.networks = {};
       networks.forEach((n) => {
@@ -650,15 +1085,6 @@ function App() {
     return null;
   }
 
-  function validateVolumePath(path: string): string | null {
-    if (!path) return null;
-    // Basic validation - should not contain invalid characters
-    if (/[<>|?*]/.test(path)) {
-      return "Volume path contains invalid characters";
-    }
-    return null;
-  }
-
   // Validation and reformatting
   function validateAndReformat() {
     try {
@@ -850,7 +1276,6 @@ function App() {
   // Convert to systemd service
   function convertToSystemd(service: ServiceConfig): string {
     const containerName = service.container_name || service.name;
-    const serviceName = containerName.replace(/[^a-zA-Z0-9]/g, "-");
 
     let unit = `[Unit]
 Description=Docker Container ${containerName}
@@ -907,14 +1332,8 @@ WantedBy=multi-user.target
   }
 
   // Generate Komodo .toml from Portainer stack
-  function generateKomodoToml(portainerStack: any): string {
+  function generateKomodoToml(_portainerStack: any): string {
     try {
-      // Try to parse if it's a string
-      let stack = portainerStack;
-      if (typeof portainerStack === "string") {
-        stack = JSON.parse(portainerStack);
-      }
-
       // Extract services from compose file if available
       const composeData = jsyaml.load(yaml) as any;
       const services = composeData?.services || {};
@@ -1040,8 +1459,8 @@ image = ""
   }
 
   useEffect(() => {
-    setYaml(generateYaml(services, networks, volumes));
-  }, [services, networks, volumes]);
+    setYaml(generateYaml(services, networks, volumes, vpnConfig || defaultVPNConfig()));
+  }, [services, networks, volumes, vpnConfig]);
 
   function updateServiceField(field: keyof ServiceConfig, value: any) {
     if (typeof selectedIdx !== "number") return;
@@ -1375,7 +1794,7 @@ image = ""
     }
 
     const GITHUB_OWNER = "hhftechnology";
-    const GITHUB_REPO = "Compose-Store";
+    const GITHUB_REPO = "Marketplace";
     const GITHUB_PATH = "compose-files";
     const GITHUB_BRANCH = "main";
 
@@ -1702,8 +2121,15 @@ image = ""
           }
         : undefined,
     };
+    // Calculate the new service index after filtering out unnamed services
+    const currentServices = services;
+    const filteredServices = currentServices.filter((svc) => svc.name && svc.name.trim() !== "");
+    const newServiceIndex = filteredServices.length;
+    
     setServices((prev) => {
-      const updated = [...prev, newService];
+      // Remove any unnamed services (empty name) when adding from marketplace
+      const filtered = prev.filter((svc) => svc.name && svc.name.trim() !== "");
+      const updated = [...filtered, newService];
       return updated;
     });
     if (allNetworks && Object.keys(allNetworks).length > 0) {
@@ -1820,10 +2246,7 @@ image = ""
       });
     }
     setSelectedType("service");
-    setSelectedIdx((prev) => {
-      const newIndex = (prev || 0) + 1;
-      return newIndex;
-    });
+    setSelectedIdx(newServiceIndex);
     setComposeStoreOpen(false);
   }
 
@@ -1877,9 +2300,9 @@ image = ""
                 className="mb-2"
                 onClick={() => setComposeStoreOpen(true)}
               >
-                Browse Compose Store
+                Browse Compose Marketplace
               </Button>
-              {/* Compose Store Custom Overlay */}
+              {/* Compose Marketplace Overlay */}
               {composeStoreOpen && (
                 <div
                   className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -1937,7 +2360,7 @@ image = ""
                     <div className="mb-4 text-xs text-muted-foreground">
                       Want to contribute?{" "}
                       <a
-                        href="https://github.com/shantnudon/Containix"
+                        href="https://github.com/hhftechnology/Marketplace"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
@@ -2089,6 +2512,561 @@ image = ""
                   </Card>
                 ))}
               </div>
+              <Separator className="my-2" />
+              {/* VPN Configuration */}
+              <Collapsible>
+                <div className="flex items-center justify-between mb-2 w-full box-border">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="font-bold text-md p-0 h-auto">
+                      VPN Configuration
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <div className="flex flex-col gap-3 w-full box-border">
+                    <div>
+                      <Label className="mb-1 block text-sm">VPN Type</Label>
+                      <Select
+                        value={vpnConfig?.type || "none"}
+                        onValueChange={(value) => {
+                          const currentConfig = vpnConfig || defaultVPNConfig();
+                          const newType = value === "none" ? null : value as VPNConfig["type"];
+                          setVpnConfig({
+                            ...currentConfig,
+                            enabled: newType !== null,
+                            type: newType,
+                            tailscale: newType === "tailscale" ? (currentConfig.tailscale || defaultTailscaleConfig()) : undefined,
+                            newt: newType === "newt" ? (currentConfig.newt || defaultNewtConfig()) : undefined,
+                            cloudflared: newType === "cloudflared" ? (currentConfig.cloudflared || defaultCloudflaredConfig()) : undefined,
+                            wireguard: newType === "wireguard" ? (currentConfig.wireguard || defaultWireguardConfig()) : undefined,
+                            zerotier: newType === "zerotier" ? (currentConfig.zerotier || defaultZerotierConfig()) : undefined,
+                            netbird: newType === "netbird" ? (currentConfig.netbird || defaultNetbirdConfig()) : undefined,
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select VPN type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="tailscale">Tailscale</SelectItem>
+                          <SelectItem value="newt">Newt</SelectItem>
+                          <SelectItem value="cloudflared">Cloudflared</SelectItem>
+                          <SelectItem value="wireguard">Wireguard</SelectItem>
+                          <SelectItem value="zerotier">ZeroTier</SelectItem>
+                          <SelectItem value="netbird">Netbird</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {vpnConfig && vpnConfig.enabled && vpnConfig.type === "tailscale" && vpnConfig.tailscale && (
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm">Auth Key</Label>
+                          <Input
+                            value={vpnConfig.tailscale.authKey}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, authKey: e.target.value }
+                            })}
+                            placeholder="${TS_AUTHKEY}"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Get from Tailscale admin console</p>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Hostname</Label>
+                          <Input
+                            value={vpnConfig.tailscale.hostname}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, hostname: e.target.value }
+                            })}
+                            placeholder="my-service"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={vpnConfig.tailscale.acceptDns}
+                            onCheckedChange={(checked) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, acceptDns: checked === true }
+                            })}
+                          />
+                          <Label 
+                            className="text-sm cursor-pointer"
+                            onClick={() => {
+                              if (!vpnConfig.tailscale) return;
+                              setVpnConfig({
+                                ...vpnConfig,
+                                tailscale: { ...vpnConfig.tailscale, acceptDns: !vpnConfig.tailscale.acceptDns }
+                              });
+                            }}
+                          >
+                            Accept DNS
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={vpnConfig.tailscale.authOnce}
+                            onCheckedChange={(checked) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, authOnce: checked === true }
+                            })}
+                          />
+                          <Label 
+                            className="text-sm cursor-pointer"
+                            onClick={() => {
+                              if (!vpnConfig.tailscale) return;
+                              setVpnConfig({
+                                ...vpnConfig,
+                                tailscale: { ...vpnConfig.tailscale, authOnce: !vpnConfig.tailscale.authOnce }
+                              });
+                            }}
+                          >
+                            Auth Once
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={vpnConfig.tailscale.userspace}
+                            onCheckedChange={(checked) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, userspace: checked === true }
+                            })}
+                          />
+                          <Label 
+                            className="text-sm cursor-pointer"
+                            onClick={() => {
+                              if (!vpnConfig.tailscale) return;
+                              setVpnConfig({
+                                ...vpnConfig,
+                                tailscale: { ...vpnConfig.tailscale, userspace: !vpnConfig.tailscale.userspace }
+                              });
+                            }}
+                          >
+                            Userspace
+                          </Label>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Exit Node (optional)</Label>
+                          <Input
+                            value={vpnConfig.tailscale.exitNode}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, exitNode: e.target.value }
+                            })}
+                            placeholder="Exit node IP or hostname"
+                          />
+                        </div>
+                        {vpnConfig.tailscale.exitNode && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={vpnConfig.tailscale.exitNodeAllowLan}
+                              onCheckedChange={(checked) => setVpnConfig({
+                                ...vpnConfig,
+                                tailscale: { ...vpnConfig.tailscale!, exitNodeAllowLan: checked === true }
+                              })}
+                            />
+                            <Label 
+                              className="text-sm cursor-pointer"
+                              onClick={() => {
+                                if (!vpnConfig.tailscale) return;
+                                setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale, exitNodeAllowLan: !vpnConfig.tailscale.exitNodeAllowLan }
+                                });
+                              }}
+                            >
+                              Allow LAN Access
+                            </Label>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={vpnConfig.tailscale.enableServe}
+                            onCheckedChange={(checked) => setVpnConfig({
+                              ...vpnConfig,
+                              tailscale: { ...vpnConfig.tailscale!, enableServe: checked === true }
+                            })}
+                          />
+                          <Label 
+                            className="text-sm cursor-pointer"
+                            onClick={() => {
+                              if (!vpnConfig.tailscale) return;
+                              setVpnConfig({
+                                ...vpnConfig,
+                                tailscale: { ...vpnConfig.tailscale, enableServe: !vpnConfig.tailscale.enableServe }
+                              });
+                            }}
+                          >
+                            Enable Serve (TCP/HTTPS)
+                          </Label>
+                        </div>
+                        {vpnConfig.tailscale.enableServe && (
+                          <div className="flex flex-col gap-3 pl-4 border-l-2">
+                            <div>
+                              <Label className="mb-1 block text-sm">Target Service</Label>
+                              <Select
+                                value={vpnConfig.tailscale.serveTargetService}
+                                onValueChange={(value) => setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale!, serveTargetService: value }
+                                })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select service..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {services.filter(s => s.name).map(s => (
+                                    <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="mb-1 block text-sm">External Port</Label>
+                              <Input
+                                value={vpnConfig.tailscale.serveExternalPort}
+                                onChange={(e) => setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale!, serveExternalPort: e.target.value }
+                                })}
+                                placeholder="443"
+                              />
+                            </div>
+                            <div>
+                              <Label className="mb-1 block text-sm">Internal Port</Label>
+                              <Input
+                                value={vpnConfig.tailscale.serveInternalPort}
+                                onChange={(e) => setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale!, serveInternalPort: e.target.value }
+                                })}
+                                placeholder="8080"
+                              />
+                            </div>
+                            <div>
+                              <Label className="mb-1 block text-sm">Path</Label>
+                              <Input
+                                value={vpnConfig.tailscale.servePath}
+                                onChange={(e) => setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale!, servePath: e.target.value }
+                                })}
+                                placeholder="/"
+                              />
+                            </div>
+                            <div>
+                              <Label className="mb-1 block text-sm">Protocol</Label>
+                              <Select
+                                value={vpnConfig.tailscale.serveProtocol}
+                                onValueChange={(value) => setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale!, serveProtocol: value as "HTTPS" | "HTTP" }
+                                })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="HTTPS">HTTPS</SelectItem>
+                                  <SelectItem value="HTTP">HTTP</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="mb-1 block text-sm">Cert Domain (optional)</Label>
+                              <Input
+                                value={vpnConfig.tailscale.certDomain}
+                                onChange={(e) => setVpnConfig({
+                                  ...vpnConfig,
+                                  tailscale: { ...vpnConfig.tailscale!, certDomain: e.target.value }
+                                })}
+                                placeholder="${TS_CERT_DOMAIN}"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {vpnConfig && vpnConfig.enabled && vpnConfig.type === "newt" && vpnConfig.newt && (
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm">Endpoint</Label>
+                          <Input
+                            value={vpnConfig.newt.endpoint}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              newt: { ...vpnConfig.newt!, endpoint: e.target.value }
+                            })}
+                            placeholder="https://app.pangolin.net"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Newt ID</Label>
+                          <Input
+                            value={vpnConfig.newt.newtId}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              newt: { ...vpnConfig.newt!, newtId: e.target.value }
+                            })}
+                            placeholder="${NEWT_ID}"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Newt Secret</Label>
+                          <Input
+                            value={vpnConfig.newt.newtSecret}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              newt: { ...vpnConfig.newt!, newtSecret: e.target.value }
+                            })}
+                            placeholder="${NEWT_SECRET}"
+                            type="password"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Network Name</Label>
+                          <Input
+                            value={vpnConfig.newt.networkName}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              newt: { ...vpnConfig.newt!, networkName: e.target.value }
+                            })}
+                            placeholder="newt"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {vpnConfig && vpnConfig.enabled && vpnConfig.type === "cloudflared" && vpnConfig.cloudflared && (
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm">Tunnel Token</Label>
+                          <Input
+                            value={vpnConfig.cloudflared.tunnelToken}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              cloudflared: { ...vpnConfig.cloudflared!, tunnelToken: e.target.value }
+                            })}
+                            placeholder="${TUNNEL_TOKEN}"
+                            type="password"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Get from Cloudflare dashboard</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={vpnConfig.cloudflared.noAutoupdate}
+                            onCheckedChange={(checked) => setVpnConfig({
+                              ...vpnConfig,
+                              cloudflared: { ...vpnConfig.cloudflared!, noAutoupdate: checked === true }
+                            })}
+                          />
+                          <Label 
+                            className="text-sm cursor-pointer"
+                            onClick={() => {
+                              if (!vpnConfig.cloudflared) return;
+                              setVpnConfig({
+                                ...vpnConfig,
+                                cloudflared: { ...vpnConfig.cloudflared, noAutoupdate: !vpnConfig.cloudflared.noAutoupdate }
+                              });
+                            }}
+                          >
+                            No Auto-update
+                          </Label>
+                        </div>
+                      </div>
+                    )}
+
+                    {vpnConfig && vpnConfig.enabled && vpnConfig.type === "wireguard" && vpnConfig.wireguard && (
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm">Config Path</Label>
+                          <Input
+                            value={vpnConfig.wireguard.configPath}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              wireguard: { ...vpnConfig.wireguard!, configPath: e.target.value }
+                            })}
+                            placeholder="/etc/wireguard/wg0.conf"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Interface Name</Label>
+                          <Input
+                            value={vpnConfig.wireguard.interfaceName}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              wireguard: { ...vpnConfig.wireguard!, interfaceName: e.target.value }
+                            })}
+                            placeholder="wg0"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {vpnConfig && vpnConfig.enabled && vpnConfig.type === "zerotier" && vpnConfig.zerotier && (
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm">Network ID</Label>
+                          <Input
+                            value={vpnConfig.zerotier.networkId}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              zerotier: { ...vpnConfig.zerotier!, networkId: e.target.value }
+                            })}
+                            placeholder="${ZT_NETWORK_ID}"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Identity Path</Label>
+                          <Input
+                            value={vpnConfig.zerotier.identityPath}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              zerotier: { ...vpnConfig.zerotier!, identityPath: e.target.value }
+                            })}
+                            placeholder="/var/lib/zerotier-one"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {vpnConfig && vpnConfig.enabled && vpnConfig.type === "netbird" && vpnConfig.netbird && (
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm">Setup Key</Label>
+                          <Input
+                            value={vpnConfig.netbird.setupKey}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              netbird: { ...vpnConfig.netbird!, setupKey: e.target.value }
+                            })}
+                            placeholder="${NETBIRD_SETUP_KEY}"
+                            type="password"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm">Management URL (optional)</Label>
+                          <Input
+                            value={vpnConfig.netbird.managementUrl}
+                            onChange={(e) => setVpnConfig({
+                              ...vpnConfig,
+                              netbird: { ...vpnConfig.netbird!, managementUrl: e.target.value }
+                            })}
+                            placeholder="https://api.netbird.io"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {vpnConfig && vpnConfig.enabled && (
+                      <>
+                        {(() => {
+                          let hasErrors = false;
+                          let errorMessage = "";
+                          
+                          if (!vpnConfig) return null;
+                          
+                          if (vpnConfig.type === "tailscale" && vpnConfig.tailscale) {
+                            if (!vpnConfig.tailscale.authKey) {
+                              hasErrors = true;
+                              errorMessage = "Tailscale Auth Key is required";
+                            }
+                            if (vpnConfig.tailscale.enableServe && !vpnConfig.tailscale.serveTargetService) {
+                              hasErrors = true;
+                              errorMessage = "Target service is required when Serve is enabled";
+                            }
+                          } else if (vpnConfig.type === "newt" && vpnConfig.newt) {
+                            if (!vpnConfig.newt.newtId || !vpnConfig.newt.newtSecret) {
+                              hasErrors = true;
+                              errorMessage = "Newt ID and Secret are required";
+                            }
+                          } else if (vpnConfig.type === "cloudflared" && vpnConfig.cloudflared) {
+                            if (!vpnConfig.cloudflared.tunnelToken) {
+                              hasErrors = true;
+                              errorMessage = "Cloudflared Tunnel Token is required";
+                            }
+                          } else if (vpnConfig.type === "zerotier" && vpnConfig.zerotier) {
+                            if (!vpnConfig.zerotier.networkId) {
+                              hasErrors = true;
+                              errorMessage = "ZeroTier Network ID is required";
+                            }
+                          } else if (vpnConfig.type === "netbird" && vpnConfig.netbird) {
+                            if (!vpnConfig.netbird.setupKey) {
+                              hasErrors = true;
+                              errorMessage = "Netbird Setup Key is required";
+                            }
+                          }
+                          
+                          if (vpnConfig.servicesUsingVpn.length === 0) {
+                            hasErrors = true;
+                            errorMessage = "At least one service must be selected to use VPN";
+                          }
+                          
+                          return hasErrors ? (
+                            <Alert className="mb-2">
+                              <AlertCircle className="h-4 w-4" />
+                              <AlertTitle>Configuration Warning</AlertTitle>
+                              <AlertDescription className="text-xs">
+                                {errorMessage}
+                              </AlertDescription>
+                            </Alert>
+                          ) : null;
+                        })()}
+                        <div className="flex flex-col gap-2">
+                          <Label className="text-sm font-semibold">Services Using VPN</Label>
+                          {services.filter(s => s.name).length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Add services first</p>
+                          ) : (
+                            <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
+                              {services.filter(s => s.name).map((svc) => (
+                                <div key={svc.name} className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={vpnConfig.servicesUsingVpn.includes(svc.name)}
+                                    onCheckedChange={(checked) => {
+                                      const newServices = checked
+                                        ? [...vpnConfig.servicesUsingVpn, svc.name]
+                                        : vpnConfig.servicesUsingVpn.filter(n => n !== svc.name);
+                                      setVpnConfig({
+                                        ...vpnConfig,
+                                        servicesUsingVpn: newServices
+                                      });
+                                    }}
+                                  />
+                                  <Label 
+                                    htmlFor={`vpn-service-${svc.name}`}
+                                    className="text-sm cursor-pointer flex-1"
+                                    onClick={() => {
+                                      const isChecked = vpnConfig.servicesUsingVpn.includes(svc.name);
+                                      const newServices = !isChecked
+                                        ? [...vpnConfig.servicesUsingVpn, svc.name]
+                                        : vpnConfig.servicesUsingVpn.filter(n => n !== svc.name);
+                                      setVpnConfig({
+                                        ...vpnConfig,
+                                        servicesUsingVpn: newServices
+                                      });
+                                    }}
+                                  >
+                                    {svc.name}
+                                  </Label>
+                                  {vpnConfig.type && ["tailscale", "cloudflared"].includes(vpnConfig.type) && 
+                                   vpnConfig.servicesUsingVpn.includes(svc.name) && (
+                                    <span className="text-xs text-muted-foreground ml-auto">
+                                      (network_mode)
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
               <Separator className="my-2" />
               {/* Networks Management */}
               <div>
