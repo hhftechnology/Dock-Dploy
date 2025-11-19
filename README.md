@@ -21,13 +21,13 @@ A web-based tool for building, managing, and converting Docker Compose files, co
 
 ##  Table of Contents
 
-- [Features](#-features)
-- [Quick Start](#-quick-start)
-- [Deployment Options](#-deployment-options)
-- [Usage Guide](#-usage-guide)
-- [Tech Stack](#-tech-stack)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Deployment Options](#deployment-options)
+- [Usage Guide](#usage-guide)
+- [Tech Stack](#tech-stack)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
