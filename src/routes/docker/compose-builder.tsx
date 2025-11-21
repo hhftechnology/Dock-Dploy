@@ -697,7 +697,7 @@ function App() {
     }
 
     const GITHUB_OWNER = "hhftechnology";
-    const GITHUB_REPO = "Market";
+    const GITHUB_REPO = "Marketplace";
     const GITHUB_BRANCH = "main";
     const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
 
