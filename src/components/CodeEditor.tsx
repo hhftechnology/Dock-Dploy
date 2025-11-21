@@ -1,16 +1,21 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { hyperLink } from '@uiw/codemirror-extensions-hyper-link';
 import {yaml} from "@codemirror/lang-yaml";
 import { Button } from "./ui/button";
 import { monokaiDimmed } from '@uiw/codemirror-theme-monokai-dimmed';
 import { useTheme } from "./ThemeProvider";
+import { Check, Copy } from "lucide-react";
 
 interface CodeEditorProps {
     content: string;
     onContentChange: (value: string) => void;
-    width?: number;
-    height?: number;
+    width?: number | string;
+    height?: number | string;
+    editable?: boolean;
+    showCopyButton?: boolean;
+    minHeight?: number;
+    maxHeight?: number;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -18,6 +23,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     onContentChange,
     width,
     height,
+    editable = false,
+    showCopyButton = true,
+    minHeight = 200,
+    maxHeight,
 }) => {
     const [copied, setCopied] = useState(false);
     const { theme } = useTheme();
@@ -26,7 +35,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         try {
             await navigator.clipboard.writeText(content);
             setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
+            setTimeout(() => setCopied(false), 2000);
         } catch (e) {
             setCopied(false);
         }
@@ -34,57 +43,87 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
     // Determine which theme to use
     const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    
+
     // For light mode, we'll use a custom style approach
     const editorTheme = monokaiDimmed;
 
+    // Calculate responsive height based on content
+    const calculatedHeight = useMemo(() => {
+        if (height !== undefined) {
+            return typeof height === 'number' ? `${height}px` : height;
+        }
+
+        // Auto-calculate based on line count
+        const lines = content.split('\n').length;
+        const lineHeight = 24; // approximate line height in pixels
+        const calculatedPx = Math.max(minHeight, Math.min(lines * lineHeight + 40, maxHeight || 800));
+
+        return `${calculatedPx}px`;
+    }, [content, height, minHeight, maxHeight]);
+
+    const calculatedWidth = useMemo(() => {
+        if (width !== undefined) {
+            return typeof width === 'number' ? `${width}px` : width;
+        }
+        return '100%';
+    }, [width]);
+
     return (
         <div
+            className="relative flex flex-col overflow-hidden rounded-lg border bg-sidebar"
             style={{
-                width: width ? width : '100%',
-                height: height ? height : '100%',
-                margin: 0,
-                boxSizing: 'border-box',
-                display: 'flex',
-                flexDirection: 'column',
-                background: 'var(--background, #18181b)',
-                borderRadius: 8,
-                overflow: 'hidden',
-                position: 'relative',
+                width: calculatedWidth,
+                height: calculatedHeight,
+                minHeight: `${minHeight}px`,
+                maxHeight: maxHeight ? `${maxHeight}px` : undefined,
             }}
         >
             {/* Copy button in top right */}
-            <Button
-                variant="outline"
-                size="icon"
-                onClick={handleCopy}
-                className="absolute top-2 right-2 z-10 border-2 border-primary shadow-lg bg-background hover:bg-primary/20 active:bg-primary/30 transition-colors"
-                title={copied ? "Copied!" : "Copy to clipboard"}
-                aria-label="Copy code"
-                type="button"
-            >
-                {/* Clipboard SVG icon */}
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
-            </Button>
-            <div className={isDark ? "" : "cm-light-theme"}>
+            {showCopyButton && (
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="absolute top-2 right-2 z-10 h-8 px-3 shadow-md"
+                    title={copied ? "Copied!" : "Copy to clipboard"}
+                    aria-label="Copy code"
+                    type="button"
+                >
+                    {copied ? (
+                        <>
+                            <Check className="h-3.5 w-3.5 mr-1.5" />
+                            Copied
+                        </>
+                    ) : (
+                        <>
+                            <Copy className="h-3.5 w-3.5 mr-1.5" />
+                            Copy
+                        </>
+                    )}
+                </Button>
+            )}
+            <div className={`flex-1 overflow-auto ${isDark ? "" : "cm-light-theme"}`}>
                 <CodeMirror
                     value={content}
-                    height={height ? `${height}px` : `100%`}
-                    width={width ? `${width}px` : `100%`}
+                    height="100%"
+                    width="100%"
                     theme={editorTheme}
-                    editable={false}
+                    editable={editable}
                     extensions={[
                         yaml(),
                         hyperLink,
                     ]}
                     onChange={(value: string) => onContentChange(value)}
-                    basicSetup={{ lineNumbers: true }}
+                    basicSetup={{
+                        lineNumbers: true,
+                        highlightActiveLineGutter: editable,
+                        highlightActiveLine: editable,
+                        foldGutter: true,
+                    }}
                     style={{
-                        flex: 1,
-                        minHeight: 0,
-                        minWidth: 0,
-                        fontSize: 16,
-                }}
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                    }}
                 />
             </div>
         </div>

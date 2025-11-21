@@ -28,6 +28,33 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import jsyaml from "js-yaml";
+import type {
+  ServiceConfig,
+  NetworkConfig,
+  VolumeConfig,
+  Healthcheck,
+} from "../../types/compose";
+import type { VPNConfig } from "../../types/vpn-configs";
+import {
+  defaultService,
+  defaultNetwork,
+  defaultVolume,
+  defaultVPNConfig,
+  defaultTailscaleConfig,
+  defaultNewtConfig,
+  defaultCloudflaredConfig,
+  defaultWireguardConfig,
+  defaultZerotierConfig,
+  defaultNetbirdConfig,
+} from "../../utils/default-configs";
+import { generateYaml } from "../../utils/yaml-generator";
+import { validateServices, redactSensitiveData } from "../../utils/validation";
+import {
+  convertToDockerRun,
+  convertToSystemd,
+  generateKomodoToml,
+  generateEnvFile as generateEnvFileUtil,
+} from "../../utils/converters";
 import {
   SidebarProvider,
   Sidebar,
@@ -58,347 +85,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-export const Route = createFileRoute("/docker/compose-builder")({
-  component: App,
-});
-
-interface PortMapping {
-  host: string;
-  container: string;
-  protocol: string;
-}
-interface VolumeMapping {
-  host: string;
-  container: string;
-  read_only?: boolean;
-}
-interface Healthcheck {
-  test: string;
-  interval: string;
-  timeout: string;
-  retries: string;
-  start_period: string;
-  start_interval: string;
-}
-
-interface ResourceLimits {
-  cpus?: string;
-  memory?: string;
-}
-
-interface ResourceReservations {
-  cpus?: string;
-  memory?: string;
-}
-
-interface DeployResources {
-  limits?: ResourceLimits;
-  reservations?: ResourceReservations;
-}
-
-interface ServiceConfig {
-  name: string;
-  image: string;
-  container_name?: string;
-  ports: PortMapping[];
-  expose: string[];
-  volumes: VolumeMapping[];
-  environment: { key: string; value: string }[];
-  environment_syntax: "array" | "dict";
-  volumes_syntax: "array" | "dict";
-  command: string;
-  restart: string;
-  healthcheck?: Healthcheck;
-  depends_on?: string[];
-  entrypoint?: string;
-  env_file?: string;
-  extra_hosts?: string[];
-  dns?: string[];
-  networks?: string[];
-  user?: string;
-  working_dir?: string;
-  labels?: { key: string; value: string }[];
-  privileged?: boolean;
-  read_only?: boolean;
-  shm_size?: string;
-  security_opt?: string[];
-  // Network options
-  network_mode?: string;
-  // Capabilities
-  cap_add?: string[];
-  cap_drop?: string[];
-  // System controls
-  sysctls?: { key: string; value: string }[];
-  // Device management
-  devices?: string[];
-  // Temporary filesystems
-  tmpfs?: string[];
-  // Resource limits
-  ulimits?: { name: string; soft?: string; hard?: string }[];
-  // Container lifecycle
-  init?: boolean;
-  stop_grace_period?: string;
-  stop_signal?: string;
-  // Terminal/interactive
-  tty?: boolean;
-  stdin_open?: boolean;
-  // Hostname/DNS
-  hostname?: string;
-  domainname?: string;
-  mac_address?: string;
-  // IPC/PID/UTS namespaces
-  ipc_mode?: string;
-  pid?: string;
-  uts?: string;
-  // Cgroup
-  cgroup_parent?: string;
-  // Isolation
-  isolation?: string;
-  deploy?: {
-    resources?: DeployResources;
-  };
-}
-
-interface NetworkConfig {
-  name: string;
-  driver: string;
-  driver_opts: { key: string; value: string }[];
-  attachable: boolean;
-  labels: { key: string; value: string }[];
-  external: boolean;
-  name_external: string;
-  internal: boolean;
-  enable_ipv6: boolean;
-  ipam: {
-    driver: string;
-    config: { subnet: string; gateway: string }[];
-    options: { key: string; value: string }[];
-  };
-}
-interface VolumeConfig {
-  name: string;
-  driver: string;
-  driver_opts: { key: string; value: string }[];
-  labels: { key: string; value: string }[];
-  external: boolean;
-  name_external: string;
-  driver_opts_type: string;
-  driver_opts_device: string;
-  driver_opts_o: string;
-}
-
-// VPN Configuration Interfaces
-interface TailscaleConfig {
-  authKey: string;
-  hostname: string;
-  acceptDns: boolean;
-  authOnce: boolean;
-  userspace: boolean;
-  exitNode: string;
-  exitNodeAllowLan: boolean;
-  enableServe: boolean;
-  serveConfig: string; // JSON string
-  certDomain: string;
-  serveTargetService: string;
-  serveExternalPort: string;
-  serveInternalPort: string;
-  servePath: string;
-  serveProtocol: "HTTPS" | "HTTP";
-}
-
-interface NewtConfig {
-  endpoint: string;
-  newtId: string;
-  newtSecret: string;
-  networkName: string;
-}
-
-interface CloudflaredConfig {
-  tunnelToken: string;
-  noAutoupdate: boolean;
-}
-
-interface WireguardConfig {
-  configPath: string;
-  interfaceName: string;
-}
-
-interface ZerotierConfig {
-  networkId: string;
-  identityPath: string;
-}
-
-interface NetbirdConfig {
-  setupKey: string;
-  managementUrl: string;
-}
-
-interface VPNConfig {
-  enabled: boolean;
-  type:
-    | "tailscale"
-    | "newt"
-    | "cloudflared"
-    | "wireguard"
-    | "zerotier"
-    | "netbird"
-    | null;
-  tailscale?: TailscaleConfig;
-  newt?: NewtConfig;
-  cloudflared?: CloudflaredConfig;
-  wireguard?: WireguardConfig;
-  zerotier?: ZerotierConfig;
-  netbird?: NetbirdConfig;
-  servicesUsingVpn: string[]; // Service names that should use VPN
-}
-
-function defaultTailscaleConfig(): TailscaleConfig {
-  return {
-    authKey: "",
-    hostname: "",
-    acceptDns: false,
-    authOnce: true,
-    userspace: false,
-    exitNode: "",
-    exitNodeAllowLan: false,
-    enableServe: false,
-    serveConfig: "",
-    certDomain: "",
-    serveTargetService: "",
-    serveExternalPort: "443",
-    serveInternalPort: "8080",
-    servePath: "/",
-    serveProtocol: "HTTPS",
-  };
-}
-
-function defaultNewtConfig(): NewtConfig {
-  return {
-    endpoint: "https://app.pangolin.net",
-    newtId: "",
-    newtSecret: "",
-    networkName: "newt",
-  };
-}
-
-function defaultCloudflaredConfig(): CloudflaredConfig {
-  return {
-    tunnelToken: "",
-    noAutoupdate: true,
-  };
-}
-
-function defaultWireguardConfig(): WireguardConfig {
-  return {
-    configPath: "/etc/wireguard/wg0.conf",
-    interfaceName: "wg0",
-  };
-}
-
-function defaultZerotierConfig(): ZerotierConfig {
-  return {
-    networkId: "",
-    identityPath: "/var/lib/zerotier-one",
-  };
-}
-
-function defaultNetbirdConfig(): NetbirdConfig {
-  return {
-    setupKey: "",
-    managementUrl: "",
-  };
-}
-
-function defaultVPNConfig(): VPNConfig {
-  return {
-    enabled: false,
-    type: null,
-    servicesUsingVpn: [],
-  };
-}
-
-function defaultService(): ServiceConfig {
-  return {
-    name: "",
-    image: "",
-    container_name: "",
-    ports: [],
-    expose: [],
-    volumes: [],
-    environment: [],
-    environment_syntax: "array",
-    volumes_syntax: "array",
-    command: "",
-    restart: "",
-    healthcheck: undefined,
-    depends_on: [],
-    entrypoint: "",
-    env_file: "",
-    extra_hosts: [],
-    dns: [],
-    networks: [],
-    user: "",
-    working_dir: "",
-    labels: [],
-    privileged: undefined,
-    read_only: undefined,
-    shm_size: "",
-    security_opt: [],
-    network_mode: "",
-    cap_add: [],
-    cap_drop: [],
-    sysctls: [],
-    devices: [],
-    tmpfs: [],
-    ulimits: [],
-    init: undefined,
-    stop_grace_period: "",
-    stop_signal: "",
-    tty: undefined,
-    stdin_open: undefined,
-    hostname: "",
-    domainname: "",
-    mac_address: "",
-    ipc_mode: "",
-    pid: "",
-    uts: "",
-    cgroup_parent: "",
-    isolation: "",
-    deploy: undefined,
-  };
-}
-
-function defaultNetwork(): NetworkConfig {
-  return {
-    name: "",
-    driver: "",
-    driver_opts: [],
-    attachable: false,
-    labels: [],
-    external: false,
-    name_external: "",
-    internal: false,
-    enable_ipv6: false,
-    ipam: {
-      driver: "",
-      config: [],
-      options: [],
-    },
-  };
-}
-function defaultVolume(): VolumeConfig {
-  return {
-    name: "",
-    driver: "",
-    driver_opts: [],
-    labels: [],
-    external: false,
-    name_external: "",
-    driver_opts_type: "",
-    driver_opts_device: "",
-    driver_opts_o: "",
-  };
-}
+// Re-export types
+export type {
+  ServiceConfig,
+  NetworkConfig,
+  VolumeConfig,
+} from "../../types/compose";
+export type { VPNConfig } from "../../types/vpn-configs";
 
 function App() {
   const [services, setServices] = useState<ServiceConfig[]>([defaultService()]);
@@ -416,22 +109,6 @@ function App() {
   const [networks, setNetworks] = useState<NetworkConfig[]>([]);
   const [volumes, setVolumes] = useState<VolumeConfig[]>([]);
   const [vpnConfig, setVpnConfig] = useState<VPNConfig>(defaultVPNConfig());
-  const [composeStoreOpen, setComposeStoreOpen] = useState(false);
-  const [composeFiles, setComposeFiles] = useState<any[]>([]);
-  const [composeLoading, setComposeLoading] = useState(false);
-  const [composeError, setComposeError] = useState<string | null>(null);
-  const [composeSearch, setComposeSearch] = useState("");
-  const [composeCache, setComposeCache] = useState<any[]>(() => {
-    const cached = localStorage.getItem("composeStoreCache");
-    return cached ? JSON.parse(cached) : [];
-  });
-  const [composeCacheTimestamp, setComposeCacheTimestamp] = useState<
-    number | null
-  >(() => {
-    const cached = localStorage.getItem("composeStoreCacheTimestamp");
-    return cached ? parseInt(cached) : null;
-  });
-  const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set());
   const [vpnConfigOpen, setVpnConfigOpen] = useState(false);
   const codeFileRef = useRef<HTMLDivElement>(null);
   const [editorSize, setEditorSize] = useState({ width: 0, height: 0 });
@@ -441,6 +118,27 @@ function App() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState(false);
   const [clearEnvAfterDownload, setClearEnvAfterDownload] = useState(false);
+  // Template store state
+  const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [templateDetailOpen, setTemplateDetailOpen] = useState(false);
+  const [templateDetailTab, setTemplateDetailTab] = useState<
+    "overview" | "compose"
+  >("overview");
+  const [templateCache, setTemplateCache] = useState<any[]>(() => {
+    const cached = localStorage.getItem("templateStoreCache");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [templateCacheTimestamp, setTemplateCacheTimestamp] = useState<
+    number | null
+  >(() => {
+    const cached = localStorage.getItem("templateStoreCacheTimestamp");
+    return cached ? parseInt(cached) : null;
+  });
 
   useLayoutEffect(() => {
     if (!codeFileRef.current) return;
@@ -467,1143 +165,6 @@ function App() {
     };
   }, [codeFileRef]);
 
-  // VPN Helper Functions
-  function generateTailscaleServeConfig(
-    _targetService: string,
-    externalPort: string,
-    internalPort: string,
-    path: string,
-    protocol: "HTTPS" | "HTTP",
-    certDomain: string
-  ): string {
-    const config: any = {
-      TCP: {
-        [externalPort]: {
-          HTTPS: protocol === "HTTPS",
-        },
-      },
-    };
-
-    if (protocol === "HTTPS") {
-      config.Web = {
-        [`${certDomain || "${TS_CERT_DOMAIN}"}:${externalPort}`]: {
-          Handlers: {
-            [path]: {
-              Proxy: `http://127.0.0.1:${internalPort}`,
-            },
-          },
-        },
-      };
-    } else {
-      config.TCP[externalPort] = {
-        HTTP: true,
-        Handlers: {
-          [path]: {
-            Proxy: `http://127.0.0.1:${internalPort}`,
-          },
-        },
-      };
-    }
-
-    return JSON.stringify(config, null, 2);
-  }
-
-  function getVpnServiceName(vpnType: string): string {
-    return vpnType;
-  }
-
-  function generateVpnService(vpnConfig: VPNConfig | undefined): any {
-    if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return null;
-
-    const serviceName = getVpnServiceName(vpnConfig.type);
-    let service: any = {
-      restart: "always",
-    };
-
-    switch (vpnConfig.type) {
-      case "tailscale": {
-        const ts = vpnConfig.tailscale!;
-        service.image = "tailscale/tailscale:latest";
-        service.privileged = true;
-        service.volumes = [
-          "tailscale:/var/lib/tailscale",
-          "/dev/net/tun:/dev/net/tun",
-        ];
-        service.environment = {
-          TS_STATE_DIR: "/var/lib/tailscale",
-          TS_ACCEPT_DNS: ts.acceptDns ? "true" : "false",
-          TS_AUTH_ONCE: ts.authOnce ? "true" : "false",
-          TS_USERSPACE: ts.userspace ? "true" : "false",
-          TS_AUTHKEY: ts.authKey ? "${TS_AUTHKEY}" : undefined,
-          TS_HOSTNAME: ts.hostname || undefined,
-        };
-
-        if (ts.exitNode) {
-          service.environment.TS_EXTRA_ARGS = `--exit-node=${ts.exitNode}${ts.exitNodeAllowLan ? " --exit-node-allow-lan-access" : ""}`;
-        }
-
-        if (ts.enableServe && ts.serveTargetService) {
-          service.environment.TS_SERVE_CONFIG = "/etc/tailscale/serve.json";
-          service.configs = [
-            {
-              source: "serve-config",
-              target: "/etc/tailscale/serve.json",
-            },
-          ];
-        }
-
-        // Remove undefined environment variables
-        Object.keys(service.environment).forEach(
-          (key) =>
-            service.environment[key] === undefined &&
-            delete service.environment[key]
-        );
-        break;
-      }
-      case "newt": {
-        const newt = vpnConfig.newt!;
-        service.image = "fosrl/newt";
-        service.container_name = "newt";
-        service.environment = {
-          PANGOLIN_ENDPOINT: newt.endpoint,
-          NEWT_ID: newt.newtId ? "${NEWT_ID}" : undefined,
-          NEWT_SECRET: newt.newtSecret ? "${NEWT_SECRET}" : undefined,
-        };
-        service.networks = [newt.networkName];
-        Object.keys(service.environment).forEach(
-          (key) =>
-            service.environment[key] === undefined &&
-            delete service.environment[key]
-        );
-        break;
-      }
-      case "cloudflared": {
-        const cf = vpnConfig.cloudflared!;
-        service.image = "cloudflare/cloudflared";
-        service.command = cf.noAutoupdate
-          ? "--no-autoupdate tunnel run"
-          : "tunnel run";
-        service.environment = {
-          TUNNEL_TOKEN: cf.tunnelToken ? "${TUNNEL_TOKEN}" : undefined,
-        };
-        Object.keys(service.environment).forEach(
-          (key) =>
-            service.environment[key] === undefined &&
-            delete service.environment[key]
-        );
-        break;
-      }
-      case "wireguard": {
-        const wg = vpnConfig.wireguard!;
-        service.image = "linuxserver/wireguard:latest";
-        service.cap_add = ["NET_ADMIN", "SYS_MODULE"];
-        service.environment = {
-          PUID: "1000",
-          PGID: "1000",
-          TZ: "Etc/UTC",
-        };
-        service.sysctls = ["net.ipv4.conf.all.src_valid_mark=1"];
-        service.volumes = [wg.configPath + ":/config"];
-        break;
-      }
-      case "zerotier": {
-        const zt = vpnConfig.zerotier!;
-        service.image = "zerotier/zerotier:latest";
-        service.privileged = true;
-        service.networks = ["host"];
-        service.volumes = [zt.identityPath + ":/var/lib/zerotier-one"];
-        service.environment = {
-          ZT_NC_NETWORK: zt.networkId ? "${ZT_NETWORK_ID}" : undefined,
-        };
-        Object.keys(service.environment).forEach(
-          (key) =>
-            service.environment[key] === undefined &&
-            delete service.environment[key]
-        );
-        break;
-      }
-      case "netbird": {
-        const nb = vpnConfig.netbird!;
-        service.image = "netbirdio/netbird:latest";
-        service.privileged = true;
-        service.cap_add = ["NET_ADMIN", "SYS_MODULE"];
-        service.sysctls = [
-          "net.ipv4.ip_forward=1",
-          "net.ipv6.conf.all.forwarding=1",
-        ];
-        service.environment = {
-          NETBIRD_SETUP_KEY: nb.setupKey ? "${NETBIRD_SETUP_KEY}" : undefined,
-          NETBIRD_MANAGEMENT_URL: nb.managementUrl || undefined,
-        };
-        Object.keys(service.environment).forEach(
-          (key) =>
-            service.environment[key] === undefined &&
-            delete service.environment[key]
-        );
-        break;
-      }
-    }
-
-    return { [serviceName]: service };
-  }
-
-  function getVpnVolumes(vpnConfig: VPNConfig | undefined): VolumeConfig[] {
-    if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return [];
-
-    const volumes: VolumeConfig[] = [];
-
-    switch (vpnConfig.type) {
-      case "tailscale": {
-        volumes.push({
-          name: "tailscale",
-          driver: "",
-          driver_opts: [],
-          labels: [],
-          external: false,
-          name_external: "",
-          driver_opts_type: "",
-          driver_opts_device: "",
-          driver_opts_o: "",
-        });
-        break;
-      }
-    }
-
-    return volumes;
-  }
-
-  function getVpnNetworks(vpnConfig: VPNConfig | undefined): NetworkConfig[] {
-    if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return [];
-
-    const networks: NetworkConfig[] = [];
-
-    switch (vpnConfig.type) {
-      case "newt": {
-        const newt = vpnConfig.newt!;
-        networks.push({
-          name: newt.networkName,
-          driver: "",
-          driver_opts: [],
-          attachable: false,
-          labels: [],
-          external: true,
-          name_external: newt.networkName,
-          internal: false,
-          enable_ipv6: false,
-          ipam: {
-            driver: "",
-            config: [],
-            options: [],
-          },
-        });
-        break;
-      }
-    }
-
-    return networks;
-  }
-
-  function generateYaml(
-    services: ServiceConfig[],
-    networks: NetworkConfig[],
-    volumes: VolumeConfig[],
-    vpnConfig?: VPNConfig
-  ): string {
-    // Ensure vpnConfig has a default value
-    const vpn = vpnConfig || defaultVPNConfig();
-
-    const compose: any = { services: {} };
-    services.forEach((svc) => {
-      if (!svc.name) return;
-
-      const parseCommandString = (cmd: string): string[] => {
-        if (!cmd) return [];
-        if (Array.isArray(cmd)) {
-          return cmd;
-        }
-
-        try {
-          const parsed = JSON.parse(cmd);
-          if (Array.isArray(parsed)) {
-            return parsed;
-          }
-        } catch (e) {}
-        const parts = cmd.match(/(?:"[^"]*"|'[^']*'|\S+)/g) || [];
-        return parts.map((part) => {
-          const trimmed = part.replace(/^["']|["']$/g, "");
-          return trimmed;
-        });
-      };
-
-      // Check if service should use VPN
-      const shouldUseVpn =
-        vpn.enabled &&
-        vpnConfig?.type &&
-        vpn.servicesUsingVpn.includes(svc.name);
-
-      const vpnServiceName =
-        vpn.enabled && vpn.type ? getVpnServiceName(vpn.type) : null;
-
-      // VPN types that use network_mode
-      const usesNetworkMode =
-        vpn.enabled &&
-        vpn.type &&
-        ["tailscale", "cloudflared"].includes(vpn.type) &&
-        shouldUseVpn;
-
-      compose.services[svc.name] = {
-        image: svc.image || undefined,
-        container_name: svc.container_name || undefined,
-        command: svc.command ? parseCommandString(svc.command) : undefined,
-        restart: svc.restart || undefined,
-        // If using VPN with network_mode, don't expose ports (they go through VPN)
-        ports: usesNetworkMode
-          ? undefined
-          : svc.ports.length
-            ? svc.ports
-                .map((p) => {
-                  if (!p.container) return undefined;
-                  const portStr =
-                    p.host && p.container
-                      ? `${p.host}:${p.container}`
-                      : p.container;
-                  // Only add protocol if it's not "none"
-                  return p.protocol && p.protocol !== "none"
-                    ? `${portStr}/${p.protocol}`
-                    : portStr;
-                })
-                .filter(Boolean)
-            : undefined,
-        expose:
-          svc.expose && svc.expose.length > 0
-            ? svc.expose.filter(Boolean)
-            : undefined,
-        // Network mode: use VPN network_mode if enabled, otherwise use user-defined
-        network_mode:
-          usesNetworkMode && vpnServiceName
-            ? `service:${vpnServiceName}`
-            : svc.network_mode || undefined,
-        volumes: svc.volumes.length
-          ? svc.volumes_syntax === "dict"
-            ? svc.volumes
-                .map((v) => {
-                  if (v.host && v.container) {
-                    const vol: any = {
-                      type: "bind",
-                      source: v.host,
-                      target: v.container,
-                    };
-                    if (v.read_only) {
-                      vol.read_only = true;
-                    }
-                    return vol;
-                  } else if (v.container) {
-                    // Anonymous volume - just target path
-                    return {
-                      type: "volume",
-                      target: v.container,
-                    };
-                  }
-                  return undefined;
-                })
-                .filter(Boolean)
-            : svc.volumes
-                .map((v) => {
-                  if (v.host && v.container) {
-                    return v.read_only
-                      ? `${v.host}:${v.container}:ro`
-                      : `${v.host}:${v.container}`;
-                  }
-                  return v.container ? v.container : undefined;
-                })
-                .filter(Boolean)
-          : undefined,
-        environment: svc.environment.length
-          ? svc.environment_syntax === "dict"
-            ? svc.environment
-                .filter(({ key }) => key)
-                .reduce(
-                  (acc, { key, value }) => {
-                    acc[key] = value;
-                    return acc;
-                  },
-                  {} as Record<string, string>
-                )
-            : svc.environment
-                .filter(({ key }) => key)
-                .map(({ key, value }) => `${key}=${value}`)
-          : undefined,
-        healthcheck:
-          svc.healthcheck && svc.healthcheck.test
-            ? {
-                test: parseCommandString(svc.healthcheck.test),
-                interval: svc.healthcheck.interval || undefined,
-                timeout: svc.healthcheck.timeout || undefined,
-                retries: svc.healthcheck.retries || undefined,
-                start_period: svc.healthcheck.start_period || undefined,
-                start_interval: svc.healthcheck.start_interval || undefined,
-              }
-            : undefined,
-        depends_on:
-          svc.depends_on && svc.depends_on.filter(Boolean).length
-            ? svc.depends_on.filter(Boolean)
-            : undefined,
-        entrypoint: svc.entrypoint
-          ? parseCommandString(svc.entrypoint)
-          : undefined,
-        env_file:
-          svc.env_file && svc.env_file.trim()
-            ? svc.env_file.split(",").map((f) => f.trim())
-            : undefined,
-        extra_hosts:
-          svc.extra_hosts && svc.extra_hosts.filter(Boolean).length
-            ? svc.extra_hosts.filter(Boolean)
-            : undefined,
-        dns:
-          svc.dns && svc.dns.filter(Boolean).length
-            ? svc.dns.filter(Boolean)
-            : undefined,
-        networks: usesNetworkMode
-          ? undefined
-          : shouldUseVpn && vpn.type === "newt" && vpn.newt
-            ? [vpn.newt.networkName]
-            : svc.networks && svc.networks.filter(Boolean).length
-              ? svc.networks.filter(Boolean)
-              : undefined,
-        user: svc.user ? `"${svc.user}"` : undefined,
-        working_dir: svc.working_dir || undefined,
-        labels:
-          svc.labels && svc.labels.filter((l) => l.key).length
-            ? svc.labels
-                .filter((l) => l.key)
-                .map(({ key, value }) => `"${key}=${value}"`)
-            : undefined,
-        privileged: svc.privileged !== undefined ? svc.privileged : undefined,
-        read_only: svc.read_only !== undefined ? svc.read_only : undefined,
-        shm_size: svc.shm_size || undefined,
-        security_opt:
-          svc.security_opt && svc.security_opt.filter(Boolean).length
-            ? svc.security_opt.filter(Boolean)
-            : undefined,
-        cap_add:
-          svc.cap_add && svc.cap_add.filter(Boolean).length
-            ? svc.cap_add.filter(Boolean)
-            : undefined,
-        cap_drop:
-          svc.cap_drop && svc.cap_drop.filter(Boolean).length
-            ? svc.cap_drop.filter(Boolean)
-            : undefined,
-        sysctls:
-          svc.sysctls && svc.sysctls.filter((s) => s.key).length
-            ? svc.sysctls
-                .filter((s) => s.key)
-                .reduce(
-                  (acc, { key, value }) => {
-                    acc[key] = value || undefined;
-                    return acc;
-                  },
-                  {} as Record<string, string | undefined>
-                )
-            : undefined,
-        devices:
-          svc.devices && svc.devices.filter(Boolean).length
-            ? svc.devices.filter(Boolean)
-            : undefined,
-        tmpfs:
-          svc.tmpfs && svc.tmpfs.filter(Boolean).length
-            ? svc.tmpfs.filter(Boolean)
-            : undefined,
-        ulimits:
-          svc.ulimits && svc.ulimits.filter((u) => u.name).length
-            ? svc.ulimits
-                .filter((u) => u.name)
-                .reduce(
-                  (acc, u) => {
-                    if (u.soft && u.hard) {
-                      acc[u.name] = {
-                        soft: parseInt(u.soft),
-                        hard: parseInt(u.hard),
-                      };
-                    } else if (u.soft) {
-                      acc[u.name] = { soft: parseInt(u.soft) };
-                    } else if (u.hard) {
-                      acc[u.name] = { hard: parseInt(u.hard) };
-                    } else {
-                      acc[u.name] = {};
-                    }
-                    return acc;
-                  },
-                  {} as Record<string, any>
-                )
-            : undefined,
-        init: svc.init !== undefined ? svc.init : undefined,
-        stop_grace_period: svc.stop_grace_period || undefined,
-        stop_signal: svc.stop_signal || undefined,
-        tty: svc.tty !== undefined ? svc.tty : undefined,
-        stdin_open: svc.stdin_open !== undefined ? svc.stdin_open : undefined,
-        hostname: svc.hostname || undefined,
-        domainname: svc.domainname || undefined,
-        mac_address: svc.mac_address || undefined,
-        ipc: svc.ipc_mode || undefined,
-        pid: svc.pid || undefined,
-        uts: svc.uts || undefined,
-        cgroup_parent: svc.cgroup_parent || undefined,
-        isolation: svc.isolation || undefined,
-        deploy:
-          svc.deploy && svc.deploy.resources
-            ? (() => {
-                const limits: any = {};
-                if (svc.deploy.resources.limits?.cpus)
-                  limits.cpus = svc.deploy.resources.limits.cpus;
-                if (svc.deploy.resources.limits?.memory)
-                  limits.memory = svc.deploy.resources.limits.memory;
-
-                const reservations: any = {};
-                if (svc.deploy.resources.reservations?.cpus)
-                  reservations.cpus = svc.deploy.resources.reservations.cpus;
-                if (svc.deploy.resources.reservations?.memory)
-                  reservations.memory =
-                    svc.deploy.resources.reservations.memory;
-
-                const resources: any = {};
-                if (Object.keys(limits).length > 0) resources.limits = limits;
-                if (Object.keys(reservations).length > 0)
-                  resources.reservations = reservations;
-
-                return Object.keys(resources).length > 0
-                  ? { resources }
-                  : undefined;
-              })()
-            : undefined,
-      };
-    });
-    for (const name in compose.services) {
-      Object.keys(compose.services[name]).forEach(
-        (k) =>
-          compose.services[name][k] === undefined &&
-          delete compose.services[name][k]
-      );
-    }
-
-    // Add VPN service if enabled
-    if (vpn.enabled && vpn.type) {
-      const vpnService = generateVpnService(vpn);
-      if (vpnService) {
-        Object.assign(compose.services, vpnService);
-      }
-    }
-
-    // Add VPN volumes
-    const vpnVolumes = getVpnVolumes(vpn);
-    if (vpnVolumes.length > 0) {
-      volumes = [...volumes, ...vpnVolumes];
-    }
-
-    // Add VPN networks
-    const vpnNetworks = getVpnNetworks(vpn);
-    if (vpnNetworks.length > 0) {
-      networks = [...networks, ...vpnNetworks];
-    }
-
-    // Add Tailscale serve configs if enabled
-    if (
-      vpn.enabled &&
-      vpn.type === "tailscale" &&
-      vpn.tailscale?.enableServe &&
-      vpn.tailscale?.serveTargetService
-    ) {
-      const ts = vpn.tailscale;
-      const serveConfig = generateTailscaleServeConfig(
-        ts.serveTargetService,
-        ts.serveExternalPort,
-        ts.serveInternalPort,
-        ts.servePath,
-        ts.serveProtocol,
-        ts.certDomain
-      );
-
-      if (!compose.configs) {
-        compose.configs = {};
-      }
-      compose.configs["serve-config"] = {
-        content: serveConfig,
-      };
-    }
-
-    if (networks.length) {
-      compose.networks = {};
-      networks.forEach((n) => {
-        if (!n.name) return;
-        if (n.external) {
-          compose.networks[n.name] = {
-            external: n.name_external ? { name: n.name_external } : true,
-          };
-        } else {
-          compose.networks[n.name] = {
-            driver: n.driver || undefined,
-            attachable: n.attachable !== undefined ? n.attachable : undefined,
-            internal: n.internal !== undefined ? n.internal : undefined,
-            enable_ipv6:
-              n.enable_ipv6 !== undefined ? n.enable_ipv6 : undefined,
-            driver_opts:
-              n.driver_opts && n.driver_opts.length
-                ? n.driver_opts
-                    .filter((opt) => opt.key)
-                    .reduce(
-                      (acc, { key, value }) => {
-                        acc[key] = value;
-                        return acc;
-                      },
-                      {} as Record<string, string>
-                    )
-                : undefined,
-            labels:
-              n.labels && n.labels.length
-                ? n.labels
-                    .filter((l) => l.key)
-                    .map(({ key, value }) => `"${key}=${value}"`)
-                : undefined,
-            ipam:
-              n.ipam.driver || n.ipam.config.length || n.ipam.options.length
-                ? {
-                    driver: n.ipam.driver || undefined,
-                    config: n.ipam.config.length ? n.ipam.config : undefined,
-                    options: n.ipam.options.length
-                      ? n.ipam.options
-                          .filter((opt) => opt.key)
-                          .reduce(
-                            (acc, { key, value }) => {
-                              acc[key] = value;
-                              return acc;
-                            },
-                            {} as Record<string, string>
-                          )
-                      : undefined,
-                  }
-                : undefined,
-          };
-        }
-        Object.keys(compose.networks[n.name]).forEach(
-          (k) =>
-            compose.networks[n.name][k] === undefined &&
-            delete compose.networks[n.name][k]
-        );
-      });
-    }
-    if (volumes.length) {
-      compose.volumes = {};
-      volumes.forEach((v) => {
-        if (!v.name) return;
-        if (v.external) {
-          const externalVolume: any = {
-            external: v.name_external ? { name: v.name_external } : true,
-          };
-
-          if (v.driver) {
-            externalVolume.driver = v.driver;
-          }
-
-          const driverOpts: Record<string, string> = {};
-
-          if (v.driver_opts && v.driver_opts.length) {
-            v.driver_opts
-              .filter((opt) => opt.key)
-              .forEach(({ key, value }) => {
-                driverOpts[key] = value;
-              });
-          }
-
-          if (v.driver_opts_type) driverOpts.type = v.driver_opts_type;
-          if (v.driver_opts_device) driverOpts.device = v.driver_opts_device;
-          if (v.driver_opts_o) driverOpts.o = v.driver_opts_o;
-
-          if (Object.keys(driverOpts).length > 0) {
-            externalVolume.driver_opts = driverOpts;
-          }
-
-          if (v.labels && v.labels.length) {
-            externalVolume.labels = v.labels
-              .filter((l) => l.key)
-              .map(({ key, value }) => `"${key}=${value}"`);
-          }
-
-          compose.volumes[v.name] = externalVolume;
-        } else {
-          const driverOpts: Record<string, string> = {};
-
-          if (v.driver_opts && v.driver_opts.length) {
-            v.driver_opts
-              .filter((opt) => opt.key)
-              .forEach(({ key, value }) => {
-                driverOpts[key] = value;
-              });
-          }
-
-          if (v.driver_opts_type) driverOpts.type = v.driver_opts_type;
-          if (v.driver_opts_device) driverOpts.device = v.driver_opts_device;
-          if (v.driver_opts_o) driverOpts.o = v.driver_opts_o;
-
-          compose.volumes[v.name] = {
-            driver: v.driver || undefined,
-            driver_opts:
-              Object.keys(driverOpts).length > 0 ? driverOpts : undefined,
-            labels:
-              v.labels && v.labels.length
-                ? v.labels
-                    .filter((l) => l.key)
-                    .map(({ key, value }) => `"${key}=${value}"`)
-                : undefined,
-          };
-        }
-        Object.keys(compose.volumes[v.name]).forEach(
-          (k) =>
-            compose.volumes[v.name][k] === undefined &&
-            delete compose.volumes[v.name][k]
-        );
-      });
-    }
-    return yamlStringify(compose);
-  }
-
-  function yamlStringify(obj: any, indent = 0, parentKey = ""): string {
-    const pad = (n: number) => "  ".repeat(n);
-    if (typeof obj !== "object" || obj === null) return String(obj);
-    if (Array.isArray(obj)) {
-      const shouldBeSingleLine =
-        ["command", "entrypoint"].includes(parentKey) ||
-        (parentKey === "test" && indent > 0);
-      if (shouldBeSingleLine && obj.length > 0 && typeof obj[0] === "string") {
-        return `[${obj.map((v) => `"${v}"`).join(", ")}]`;
-      }
-      return obj
-        .map(
-          (v) =>
-            `\n${pad(indent)}- ${yamlStringify(v, indent + 1, parentKey).trimStart()}`
-        )
-        .join("");
-    }
-    const entries = Object.entries(obj)
-      .map(([k, v]) => {
-        if (v === undefined) return "";
-        if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-          return `\n${pad(indent)}${k}:` + yamlStringify(v, indent + 1, k);
-        }
-        if (Array.isArray(v)) {
-          if (
-            ["command", "entrypoint"].includes(k) ||
-            (k === "test" && indent > 0)
-          ) {
-            return `\n${pad(indent)}${k}: [${v.map((item) => `"${item}"`).join(", ")}]`;
-          }
-          return `\n${pad(indent)}${k}: ` + yamlStringify(v, indent + 1, k);
-        }
-        // Handle multi-line strings (like JSON in configs.content) using literal block scalar
-        if (
-          typeof v === "string" &&
-          k === "content" &&
-          parentKey &&
-          v.includes("\n")
-        ) {
-          // Use YAML literal block scalar (|) to preserve multi-line strings
-          const lines = v.split("\n");
-          const escapedLines = lines.map((line, idx) => {
-            // Escape special YAML characters if needed
-            if (line.trim() === "" && idx === lines.length - 1) return "";
-            return line;
-          });
-          return `\n${pad(indent)}${k}: |\n${escapedLines.map((line) => `${pad(indent + 1)}${line}`).join("\n")}`;
-        }
-        // For regular strings, output as-is (don't add quotes unless necessary)
-        // Port strings (like "8080:8080" or "8080/tcp") should not be quoted
-        if (typeof v === "string") {
-          // Don't quote port mappings (format: "host:container" or "port/protocol")
-          const isPortMapping = /^\d+(:\d+)?(\/\w+)?$/.test(v);
-          // Don't quote simple numeric strings or port-like values
-          if (isPortMapping || /^\d+$/.test(v)) {
-            return `\n${pad(indent)}${k}: ${v}`;
-          }
-          // Only quote if the string contains special YAML characters that need escaping
-          // But exclude colons in port mappings which are already handled above
-          const needsQuotes =
-            /^[\d-]|[:{}\[\],&*#?|>'"%@`]/.test(v) || v.trim() !== v;
-          return `\n${pad(indent)}${k}: ${needsQuotes ? `"${v.replace(/"/g, '\\"')}"` : v}`;
-        }
-        return `\n${pad(indent)}${k}: ${v}`;
-      })
-      .join("");
-    return indent === 0 && entries.startsWith("\n")
-      ? entries.slice(1)
-      : entries;
-  }
-
-  // Validation functions
-  function validateServiceName(name: string): string | null {
-    if (!name) return "Service name is required";
-    if (!/^[a-z0-9_-]+$/i.test(name)) {
-      return "Service name must contain only alphanumeric characters, hyphens, and underscores";
-    }
-    return null;
-  }
-
-  function validatePort(port: string): string | null {
-    if (!port) return null;
-    const num = parseInt(port, 10);
-    if (isNaN(num) || num < 1 || num > 65535) {
-      return "Port must be between 1 and 65535";
-    }
-    return null;
-  }
-
-  function validateEnvVarKey(key: string): string | null {
-    if (!key) return null;
-    if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) {
-      return "Environment variable key should start with a letter or underscore and contain only alphanumeric characters and underscores";
-    }
-    return null;
-  }
-
-  function validateCpuValue(cpu: string): string | null {
-    if (!cpu) return null;
-    if (!/^\d+(\.\d+)?$/.test(cpu)) {
-      return "CPU value must be a number (e.g., 0.5, 1, 2)";
-    }
-    const num = parseFloat(cpu);
-    if (num < 0) {
-      return "CPU value must be positive";
-    }
-    return null;
-  }
-
-  function validateMemoryValue(memory: string): string | null {
-    if (!memory) return null;
-    if (!/^\d+[kmgKMG]?[bB]?$/.test(memory) && !/^\d+$/.test(memory)) {
-      return "Memory value must be a number with optional unit (e.g., 512m, 2g, 1024)";
-    }
-    return null;
-  }
-
-  // Validation and reformatting
-  function validateAndReformat() {
-    try {
-      setValidationError(null);
-      setValidationSuccess(false);
-
-      // Validate services
-      const errors: string[] = [];
-      services.forEach((svc, idx) => {
-        if (!svc.name) {
-          errors.push(`Service ${idx + 1}: Name is required`);
-        } else {
-          const nameError = validateServiceName(svc.name);
-          if (nameError) errors.push(`Service "${svc.name}": ${nameError}`);
-        }
-
-        if (!svc.image) {
-          errors.push(`Service "${svc.name || idx + 1}": Image is required`);
-        }
-
-        svc.ports.forEach((port, pIdx) => {
-          if (port.host) {
-            const portError = validatePort(port.host);
-            if (portError)
-              errors.push(
-                `Service "${svc.name || idx + 1}" port ${pIdx + 1} host: ${portError}`
-              );
-          }
-          if (port.container) {
-            const portError = validatePort(port.container);
-            if (portError)
-              errors.push(
-                `Service "${svc.name || idx + 1}" port ${pIdx + 1} container: ${portError}`
-              );
-          }
-        });
-
-        svc.environment.forEach((env, eIdx) => {
-          if (env.key) {
-            const keyError = validateEnvVarKey(env.key);
-            if (keyError)
-              errors.push(
-                `Service "${svc.name || idx + 1}" env var ${eIdx + 1}: ${keyError}`
-              );
-          }
-        });
-
-        if (svc.deploy?.resources?.limits?.cpus) {
-          const cpuError = validateCpuValue(svc.deploy.resources.limits.cpus);
-          if (cpuError)
-            errors.push(
-              `Service "${svc.name || idx + 1}" CPU limit: ${cpuError}`
-            );
-        }
-        if (svc.deploy?.resources?.limits?.memory) {
-          const memError = validateMemoryValue(
-            svc.deploy.resources.limits.memory
-          );
-          if (memError)
-            errors.push(
-              `Service "${svc.name || idx + 1}" memory limit: ${memError}`
-            );
-        }
-        if (svc.deploy?.resources?.reservations?.cpus) {
-          const cpuError = validateCpuValue(
-            svc.deploy.resources.reservations.cpus
-          );
-          if (cpuError)
-            errors.push(
-              `Service "${svc.name || idx + 1}" CPU reservation: ${cpuError}`
-            );
-        }
-        if (svc.deploy?.resources?.reservations?.memory) {
-          const memError = validateMemoryValue(
-            svc.deploy.resources.reservations.memory
-          );
-          if (memError)
-            errors.push(
-              `Service "${svc.name || idx + 1}" memory reservation: ${memError}`
-            );
-        }
-      });
-
-      if (errors.length > 0) {
-        setValidationError(errors.join("; "));
-        return;
-      }
-
-      // Instead of parsing and dumping (which corrupts JSON configs),
-      // regenerate YAML using the existing generateYaml function
-      // This preserves VPN configs, JSON content, and proper formatting
-      const reformatted = generateYaml(
-        services,
-        networks,
-        volumes,
-        vpnConfig || defaultVPNConfig()
-      );
-      setYaml(reformatted);
-      setValidationSuccess(true);
-      setTimeout(() => setValidationSuccess(false), 3000);
-    } catch (error: any) {
-      setValidationError(error.message || "Invalid YAML format");
-      setValidationSuccess(false);
-    }
-  }
-
-  // Convert to docker run command
-  function convertToDockerRun(service: ServiceConfig): string {
-    let cmd = "docker run";
-
-    if (service.container_name) {
-      cmd += ` --name ${service.container_name}`;
-    }
-
-    if (service.restart) {
-      cmd += ` --restart ${service.restart}`;
-    }
-
-    service.ports.forEach((p) => {
-      if (p.host && p.container) {
-        const protocol =
-          p.protocol && p.protocol !== "none" ? `/${p.protocol}` : "";
-        cmd += ` -p ${p.host}:${p.container}${protocol}`;
-      }
-    });
-
-    service.volumes.forEach((v) => {
-      if (v.host && v.container) {
-        cmd += ` -v ${v.host}:${v.container}`;
-        if (v.read_only) cmd += ":ro";
-      }
-    });
-
-    service.environment.forEach((e) => {
-      if (e.key) {
-        cmd += ` -e ${e.key}=${e.value || ""}`;
-      }
-    });
-
-    if (service.user) {
-      cmd += ` --user ${service.user}`;
-    }
-
-    if (service.working_dir) {
-      cmd += ` -w ${service.working_dir}`;
-    }
-
-    if (service.privileged) {
-      cmd += " --privileged";
-    }
-
-    if (service.read_only) {
-      cmd += " --read-only";
-    }
-
-    if (service.shm_size) {
-      cmd += ` --shm-size ${service.shm_size}`;
-    }
-
-    service.security_opt?.forEach((opt) => {
-      if (opt) cmd += ` --security-opt ${opt}`;
-    });
-
-    service.extra_hosts?.forEach((host) => {
-      if (host) cmd += ` --add-host ${host}`;
-    });
-
-    service.dns?.forEach((dns) => {
-      if (dns) cmd += ` --dns ${dns}`;
-    });
-
-    if (service.networks && service.networks.length > 0) {
-      cmd += ` --network ${service.networks[0]}`;
-    }
-
-    cmd += ` ${service.image || ""}`;
-
-    if (service.command) {
-      try {
-        const parsed = JSON.parse(service.command);
-        if (Array.isArray(parsed)) {
-          cmd += ` ${parsed.join(" ")}`;
-        } else {
-          cmd += ` ${service.command}`;
-        }
-      } catch {
-        cmd += ` ${service.command}`;
-      }
-    }
-
-    return cmd;
-  }
-
-  // Convert to systemd service
-  function convertToSystemd(service: ServiceConfig): string {
-    const containerName = service.container_name || service.name;
-
-    let unit = `[Unit]
-Description=Docker Container ${containerName}
-Requires=docker.service
-After=docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/docker start ${containerName}
-ExecStop=/usr/bin/docker stop ${containerName}
-Restart=${service.restart === "always" ? "always" : service.restart === "unless-stopped" ? "on-failure" : "no"}
-
-[Install]
-WantedBy=multi-user.target
-`;
-
-    return unit;
-  }
-
-  // Generate .env file
-  function generateEnvFile(): string {
-    const envVars: string[] = [];
-    services.forEach((svc) => {
-      svc.environment.forEach((e) => {
-        if (e.key && !envVars.some((v) => v.startsWith(e.key + "="))) {
-          envVars.push(`${e.key}=${e.value || ""}`);
-        }
-      });
-    });
-    return envVars.join("\n");
-  }
-
-  // Redact sensitive data
-  function redactSensitiveData(yamlText: string): string {
-    const sensitivePatterns = [
-      /password\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-      /secret\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-      /api[_-]?key\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-      /token\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-      /auth[_-]?token\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-      /access[_-]?key\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-      /private[_-]?key\s*[:=]\s*["']?([^"'\n]+)["']?/gi,
-    ];
-
-    let redacted = yamlText;
-    sensitivePatterns.forEach((pattern) => {
-      redacted = redacted.replace(pattern, (match, value) => {
-        return match.replace(value, "***REDACTED***");
-      });
-    });
-
-    return redacted;
-  }
-
-  // Generate Komodo .toml from Portainer stack
-  function generateKomodoToml(_portainerStack: any): string {
-    try {
-      // Extract services from compose file if available
-      const composeData = jsyaml.load(yaml) as any;
-      const services = composeData?.services || {};
-
-      let toml = `# Komodo configuration generated from Portainer stack
-# Generated from Docker Compose configuration
-
-`;
-
-      Object.entries(services).forEach(([name, service]: [string, any]) => {
-        toml += `[${name}]\n`;
-        if (service.image) {
-          toml += `image = "${service.image}"\n`;
-        }
-        if (service.container_name) {
-          toml += `container_name = "${service.container_name}"\n`;
-        }
-        if (service.restart) {
-          toml += `restart = "${service.restart}"\n`;
-        }
-        if (service.ports && Array.isArray(service.ports)) {
-          toml += `ports = [\n`;
-          service.ports.forEach((port: string) => {
-            toml += `  "${port}",\n`;
-          });
-          toml += `]\n`;
-        }
-        if (service.volumes && Array.isArray(service.volumes)) {
-          toml += `volumes = [\n`;
-          service.volumes.forEach((vol: string) => {
-            toml += `  "${vol}",\n`;
-          });
-          toml += `]\n`;
-        }
-        if (service.environment) {
-          if (Array.isArray(service.environment)) {
-            toml += `environment = [\n`;
-            service.environment.forEach((env: string) => {
-              toml += `  "${env}",\n`;
-            });
-            toml += `]\n`;
-          } else {
-            toml += `environment = {}\n`;
-            Object.entries(service.environment).forEach(
-              ([key, value]: [string, any]) => {
-                toml += `environment.${key} = "${value}"\n`;
-              }
-            );
-          }
-        }
-        toml += `\n`;
-      });
-
-      return toml;
-    } catch (error: any) {
-      return `# Komodo configuration generated from Docker Compose
-# Note: Error parsing configuration: ${error.message}
-# Please adjust manually
-
-[service]
-name = "service"
-image = ""
-
-# Add configuration as needed
-`;
-    }
-  }
-
   function handleConversion(type: string) {
     setConversionType(type);
     let output = "";
@@ -1625,13 +186,13 @@ image = ""
           }
           break;
         case "env":
-          output = generateEnvFile();
+          output = generateEnvFileUtil(services, vpnConfig);
           break;
         case "redact":
           output = redactSensitiveData(yaml);
           break;
         case "komodo":
-          output = generateKomodoToml({});
+          output = generateKomodoToml(yaml);
           break;
         default:
           output = "Unknown conversion type";
@@ -1641,6 +202,37 @@ image = ""
     } catch (error: any) {
       setConversionOutput(`Error: ${error.message}`);
       setConversionDialogOpen(true);
+    }
+  }
+
+  // Validation and reformatting
+  function validateAndReformat() {
+    try {
+      setValidationError(null);
+      setValidationSuccess(false);
+
+      // Validate services
+      const errors = validateServices(services);
+
+      if (errors.length > 0) {
+        setValidationError(errors.join("; "));
+        return;
+      }
+
+      // Regenerate YAML using the imported generateYaml function
+      // This preserves VPN configs, JSON content, and proper formatting
+      const reformatted = generateYaml(
+        services,
+        networks,
+        volumes,
+        vpnConfig || defaultVPNConfig()
+      );
+      setYaml(reformatted);
+      setValidationSuccess(true);
+      setTimeout(() => setValidationSuccess(false), 3000);
+    } catch (error: any) {
+      setValidationError(error.message || "Invalid YAML format");
+      setValidationSuccess(false);
     }
   }
 
@@ -1666,10 +258,17 @@ image = ""
     );
   }, [services, networks, volumes, vpnConfig]);
 
+  // Helper to get new services array with selected service validation
+  function getNewServices(): [ServiceConfig[], number] | null {
+    if (typeof selectedIdx !== "number") return null;
+    return [[...services], selectedIdx];
+  }
+
   function updateServiceField(field: keyof ServiceConfig, value: any) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    (newServices[selectedIdx] as any)[field] = value;
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, idx] = result;
+    (newServices[idx] as any)[field] = value;
     setServices(newServices);
   }
 
@@ -1678,28 +277,74 @@ image = ""
     idx: number,
     value: any
   ) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     (newServices[selectedIdx][field] as any[])[idx] = value;
     setServices(newServices);
   }
 
   function addListField(field: keyof ServiceConfig) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, idx] = result;
     if (field === "environment") {
-      newServices[selectedIdx].environment.push({ key: "", value: "" });
+      newServices[idx].environment.push({ key: "", value: "" });
     } else {
-      (newServices[selectedIdx][field] as any[]).push("");
+      (newServices[idx][field] as any[]).push("");
     }
     setServices(newServices);
   }
 
   function removeListField(field: keyof ServiceConfig, idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     (newServices[selectedIdx][field] as any[]).splice(idx, 1);
     setServices(newServices);
+  }
+
+  // Generic helper for simple string array fields
+  function updateStringArrayField(
+    field: keyof ServiceConfig,
+    idx: number,
+    value: string
+  ) {
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
+    const service = newServices[selectedIdx];
+    const arrayField = (service as any)[field] as string[] | undefined;
+    if (!arrayField) {
+      (service as any)[field] = [];
+    }
+    ((service as any)[field] as string[])[idx] = value;
+    setServices(newServices);
+  }
+
+  function addStringArrayField(field: keyof ServiceConfig) {
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
+    const service = newServices[selectedIdx];
+    const arrayField = (service as any)[field] as string[] | undefined;
+    if (!arrayField) {
+      (service as any)[field] = [];
+    }
+    ((service as any)[field] as string[]).push("");
+    setServices(newServices);
+  }
+
+  function removeStringArrayField(field: keyof ServiceConfig, idx: number) {
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
+    const service = newServices[selectedIdx];
+    const arrayField = (service as any)[field] as string[] | undefined;
+    if (arrayField) {
+      arrayField.splice(idx, 1);
+      setServices(newServices);
+    }
   }
 
   function addService() {
@@ -1734,8 +379,9 @@ image = ""
     field: "host" | "container" | "protocol",
     value: string
   ) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (field === "protocol") {
       newServices[selectedIdx].ports[idx][field] = value;
     } else {
@@ -1744,8 +390,9 @@ image = ""
     setServices(newServices);
   }
   function addPortField() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     newServices[selectedIdx].ports.push({
       host: "",
       container: "",
@@ -1754,8 +401,9 @@ image = ""
     setServices(newServices);
   }
   function removePortField(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     newServices[selectedIdx].ports.splice(idx, 1);
     setServices(newServices);
   }
@@ -1765,14 +413,16 @@ image = ""
     field: "host" | "container" | "read_only",
     value: string | boolean
   ) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     (newServices[selectedIdx].volumes[idx] as any)[field] = value;
     setServices(newServices);
   }
   function addVolumeField() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     newServices[selectedIdx].volumes.push({
       host: "",
       container: "",
@@ -1781,15 +431,17 @@ image = ""
     setServices(newServices);
   }
   function removeVolumeField(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     newServices[selectedIdx].volumes.splice(idx, 1);
     setServices(newServices);
   }
 
   function updateHealthcheckField(field: keyof Healthcheck, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (!newServices[selectedIdx].healthcheck)
       newServices[selectedIdx].healthcheck = {
         test: "",
@@ -1803,100 +455,39 @@ image = ""
     setServices(newServices);
   }
 
-  function updateDependsOn(idx: number, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].depends_on![idx] = value;
-    setServices(newServices);
-  }
-  function addDependsOn() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].depends_on)
-      newServices[selectedIdx].depends_on = [];
-    newServices[selectedIdx].depends_on!.push("");
-    setServices(newServices);
-  }
-  function removeDependsOn(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].depends_on!.splice(idx, 1);
-    setServices(newServices);
-  }
+  // Use generic helpers for simple string array fields
+  const updateDependsOn = (idx: number, value: string) =>
+    updateStringArrayField("depends_on" as keyof ServiceConfig, idx, value);
+  const addDependsOn = () =>
+    addStringArrayField("depends_on" as keyof ServiceConfig);
+  const removeDependsOn = (idx: number) =>
+    removeStringArrayField("depends_on" as keyof ServiceConfig, idx);
 
-  function updateSecurityOpt(idx: number, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].security_opt![idx] = value;
-    setServices(newServices);
-  }
-  function addSecurityOpt() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].security_opt)
-      newServices[selectedIdx].security_opt = [];
-    newServices[selectedIdx].security_opt!.push("");
-    setServices(newServices);
-  }
-  function removeSecurityOpt(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].security_opt!.splice(idx, 1);
-    setServices(newServices);
-  }
+  const updateSecurityOpt = (idx: number, value: string) =>
+    updateStringArrayField("security_opt" as keyof ServiceConfig, idx, value);
+  const addSecurityOpt = () =>
+    addStringArrayField("security_opt" as keyof ServiceConfig);
+  const removeSecurityOpt = (idx: number) =>
+    removeStringArrayField("security_opt" as keyof ServiceConfig, idx);
 
-  // Helper functions for cap_add
-  function updateCapAdd(idx: number, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].cap_add)
-      newServices[selectedIdx].cap_add = [];
-    newServices[selectedIdx].cap_add![idx] = value;
-    setServices(newServices);
-  }
-  function addCapAdd() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].cap_add)
-      newServices[selectedIdx].cap_add = [];
-    newServices[selectedIdx].cap_add!.push("");
-    setServices(newServices);
-  }
-  function removeCapAdd(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].cap_add!.splice(idx, 1);
-    setServices(newServices);
-  }
+  const updateCapAdd = (idx: number, value: string) =>
+    updateStringArrayField("cap_add" as keyof ServiceConfig, idx, value);
+  const addCapAdd = () => addStringArrayField("cap_add" as keyof ServiceConfig);
+  const removeCapAdd = (idx: number) =>
+    removeStringArrayField("cap_add" as keyof ServiceConfig, idx);
 
-  // Helper functions for cap_drop
-  function updateCapDrop(idx: number, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].cap_drop)
-      newServices[selectedIdx].cap_drop = [];
-    newServices[selectedIdx].cap_drop![idx] = value;
-    setServices(newServices);
-  }
-  function addCapDrop() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].cap_drop)
-      newServices[selectedIdx].cap_drop = [];
-    newServices[selectedIdx].cap_drop!.push("");
-    setServices(newServices);
-  }
-  function removeCapDrop(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].cap_drop!.splice(idx, 1);
-    setServices(newServices);
-  }
+  const updateCapDrop = (idx: number, value: string) =>
+    updateStringArrayField("cap_drop" as keyof ServiceConfig, idx, value);
+  const addCapDrop = () =>
+    addStringArrayField("cap_drop" as keyof ServiceConfig);
+  const removeCapDrop = (idx: number) =>
+    removeStringArrayField("cap_drop" as keyof ServiceConfig, idx);
 
-  // Helper functions for sysctls
+  // Helper functions for sysctls (object array with key/value)
   function updateSysctl(idx: number, field: "key" | "value", value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (!newServices[selectedIdx].sysctls)
       newServices[selectedIdx].sysctls = [];
     newServices[selectedIdx].sysctls![idx] = {
@@ -1906,74 +497,44 @@ image = ""
     setServices(newServices);
   }
   function addSysctl() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (!newServices[selectedIdx].sysctls)
       newServices[selectedIdx].sysctls = [];
     newServices[selectedIdx].sysctls!.push({ key: "", value: "" });
     setServices(newServices);
   }
   function removeSysctl(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     newServices[selectedIdx].sysctls!.splice(idx, 1);
     setServices(newServices);
   }
 
-  // Helper functions for devices
-  function updateDevice(idx: number, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].devices)
-      newServices[selectedIdx].devices = [];
-    newServices[selectedIdx].devices![idx] = value;
-    setServices(newServices);
-  }
-  function addDevice() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].devices)
-      newServices[selectedIdx].devices = [];
-    newServices[selectedIdx].devices!.push("");
-    setServices(newServices);
-  }
-  function removeDevice(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].devices!.splice(idx, 1);
-    setServices(newServices);
-  }
+  // Use generic helpers for simple string array fields
+  const updateDevice = (idx: number, value: string) =>
+    updateStringArrayField("devices" as keyof ServiceConfig, idx, value);
+  const addDevice = () => addStringArrayField("devices" as keyof ServiceConfig);
+  const removeDevice = (idx: number) =>
+    removeStringArrayField("devices" as keyof ServiceConfig, idx);
 
-  // Helper functions for tmpfs
-  function updateTmpfs(idx: number, value: string) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].tmpfs) newServices[selectedIdx].tmpfs = [];
-    newServices[selectedIdx].tmpfs![idx] = value;
-    setServices(newServices);
-  }
-  function addTmpfs() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    if (!newServices[selectedIdx].tmpfs) newServices[selectedIdx].tmpfs = [];
-    newServices[selectedIdx].tmpfs!.push("");
-    setServices(newServices);
-  }
-  function removeTmpfs(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
-    newServices[selectedIdx].tmpfs!.splice(idx, 1);
-    setServices(newServices);
-  }
+  const updateTmpfs = (idx: number, value: string) =>
+    updateStringArrayField("tmpfs" as keyof ServiceConfig, idx, value);
+  const addTmpfs = () => addStringArrayField("tmpfs" as keyof ServiceConfig);
+  const removeTmpfs = (idx: number) =>
+    removeStringArrayField("tmpfs" as keyof ServiceConfig, idx);
 
-  // Helper functions for ulimits
+  // Helper functions for ulimits (object array with name/soft/hard)
   function updateUlimit(
     idx: number,
     field: "name" | "soft" | "hard",
     value: string
   ) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (!newServices[selectedIdx].ulimits)
       newServices[selectedIdx].ulimits = [];
     newServices[selectedIdx].ulimits![idx] = {
@@ -1983,16 +544,18 @@ image = ""
     setServices(newServices);
   }
   function addUlimit() {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (!newServices[selectedIdx].ulimits)
       newServices[selectedIdx].ulimits = [];
     newServices[selectedIdx].ulimits!.push({ name: "", soft: "", hard: "" });
     setServices(newServices);
   }
   function removeUlimit(idx: number) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     newServices[selectedIdx].ulimits!.splice(idx, 1);
     setServices(newServices);
   }
@@ -2002,8 +565,9 @@ image = ""
     field: "cpus" | "memory",
     value: string
   ) {
-    if (typeof selectedIdx !== "number") return;
-    const newServices = [...services];
+    const result = getNewServices();
+    if (!result) return;
+    const [newServices, selectedIdx] = result;
     if (!newServices[selectedIdx].deploy) {
       newServices[selectedIdx].deploy = { resources: {} };
     }
@@ -2125,303 +689,145 @@ image = ""
     }
   }
 
+  // Template fetching functions
+  async function fetchTemplatesFromGitHub(backgroundUpdate: boolean = false) {
+    if (!backgroundUpdate) {
+      setTemplateLoading(true);
+      setTemplateError(null);
+    }
+
+    const GITHUB_OWNER = "hhftechnology";
+    const GITHUB_REPO = "Market";
+    const GITHUB_BRANCH = "main";
+    const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
+
+    try {
+      // Fetch meta.json
+      const metaUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/meta.json`;
+      const metaResponse = await fetch(metaUrl);
+
+      if (!metaResponse.ok) {
+        throw new Error(
+          `Failed to fetch templates: ${metaResponse.statusText}`
+        );
+      }
+
+      const templatesMeta: any[] = await metaResponse.json();
+
+      // Store templates with metadata
+      setTemplates(templatesMeta);
+      setTemplateCache(templatesMeta);
+      setTemplateCacheTimestamp(Date.now());
+      localStorage.setItem("templateStoreCache", JSON.stringify(templatesMeta));
+      localStorage.setItem("templateStoreCacheTimestamp", String(Date.now()));
+
+      if (!backgroundUpdate) {
+        setTemplateLoading(false);
+      }
+    } catch (error: any) {
+      console.error("Error fetching templates:", error);
+      if (!backgroundUpdate) {
+        setTemplateLoading(false);
+        setTemplateError(error.message || "Failed to load templates");
+      }
+    }
+  }
+
+  // Fetch template details (compose, template.toml, logo)
+  async function fetchTemplateDetails(templateId: string): Promise<any> {
+    const GITHUB_OWNER = "hhftechnology";
+    const GITHUB_REPO = "Marketplace";
+    const GITHUB_BRANCH = "main";
+    const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
+
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) {
+      throw new Error(`Template ${templateId} not found`);
+    }
+
+    try {
+      const basePath = `compose-files/${templateId}`;
+
+      // Fetch docker-compose.yml
+      const composeUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/docker-compose.yml`;
+      const composeResponse = await fetch(composeUrl);
+      if (!composeResponse.ok) {
+        throw new Error(
+          `Failed to fetch docker-compose.yml: ${composeResponse.statusText}`
+        );
+      }
+      const composeContent = await composeResponse.text();
+
+      // Fetch template.toml
+      let templateTomlContent = null;
+      let parsedTemplate = null;
+      try {
+        const tomlUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/template.toml`;
+        const tomlResponse = await fetch(tomlUrl);
+        if (tomlResponse.ok) {
+          templateTomlContent = await tomlResponse.text();
+          const { parseTemplateToml } = await import(
+            "../../utils/template-parser"
+          );
+          parsedTemplate = parseTemplateToml(templateTomlContent);
+        }
+      } catch (e) {
+        console.warn(`Template ${templateId} has no template.toml file`);
+      }
+
+      // Build logo URL if logo exists
+      let logoUrl = null;
+      if (template.logo) {
+        logoUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/${template.logo}`;
+      }
+
+      return {
+        ...template,
+        composeContent,
+        templateTomlContent,
+        parsedTemplate,
+        logoUrl,
+      };
+    } catch (error: any) {
+      console.error(
+        `Error fetching template details for ${templateId}:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  // Initialize templates when store opens
   useEffect(() => {
-    if (!composeStoreOpen) return;
+    if (!templateStoreOpen) return;
 
     const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
     const now = Date.now();
 
     // Check if we have valid cached data
     if (
-      composeCache.length > 0 &&
-      composeCacheTimestamp &&
-      now - composeCacheTimestamp < CACHE_DURATION
+      templateCache.length > 0 &&
+      templateCacheTimestamp &&
+      now - templateCacheTimestamp < CACHE_DURATION
     ) {
-      setComposeFiles(composeCache);
-      setComposeLoading(false);
-      setComposeError(null);
+      setTemplates(templateCache);
+      setTemplateLoading(false);
+      setTemplateError(null);
 
       // Still check for updates in the background
-      fetchComposeFilesFromGitHub(true);
+      fetchTemplatesFromGitHub(true);
       return;
     }
 
-    fetchComposeFilesFromGitHub(false);
-  }, [composeStoreOpen, composeCache, composeCacheTimestamp]);
+    fetchTemplatesFromGitHub(false);
+  }, [templateStoreOpen, templateCache, templateCacheTimestamp]);
 
-  async function fetchComposeFilesFromGitHub(
-    backgroundUpdate: boolean = false
-  ) {
-    if (!backgroundUpdate) {
-      setComposeLoading(true);
-      setComposeError(null);
-    }
-
-    const GITHUB_OWNER = "hhftechnology";
-    const GITHUB_REPO = "Marketplace";
-    const GITHUB_PATH = "compose-files";
-    const GITHUB_BRANCH = "main";
-
-    const GITHUB_API_BASE = "https://api.github.com";
-    const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
-
-    try {
-      // Fetch directory contents from GitHub API
-      const dirResponse = await fetch(
-        `${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}`
-      );
-
-      if (!dirResponse.ok) {
-        throw new Error(`GitHub API error: ${dirResponse.statusText}`);
-      }
-
-      const directoryContents: any[] = await dirResponse.json();
-
-      // Filter only YAML files
-      const yamlFiles = directoryContents.filter(
-        (file: any) =>
-          file.type === "file" &&
-          (file.name.endsWith(".yml") || file.name.endsWith(".yaml"))
-      );
-
-      if (yamlFiles.length === 0) {
-        setComposeFiles([]);
-        setComposeCache([]);
-        setComposeCacheTimestamp(null);
-        localStorage.removeItem("composeStoreCache");
-        localStorage.removeItem("composeStoreCacheTimestamp");
-        localStorage.removeItem("composeStoreCacheSHA");
-        if (!backgroundUpdate) setComposeLoading(false);
-        return;
-      }
-
-      // Load cached metadata with SHA for comparison
-      const cachedFiles: Record<string, { sha: string; data: any }> = {};
-      if (composeCache.length > 0) {
-        const cachedShaData = localStorage.getItem("composeStoreCacheSHA");
-        if (cachedShaData) {
-          try {
-            const parsed = JSON.parse(cachedShaData);
-            composeCache.forEach((file: any) => {
-              if (parsed[file.name]) {
-                cachedFiles[file.name] = {
-                  sha: parsed[file.name].sha,
-                  data: file,
-                };
-              }
-            });
-          } catch (e) {
-            // Invalid cache SHA data, will refetch all
-          }
-        }
-      }
-
-      // Only fetch metadata (service names and images) for new/changed files
-      // Optimization: We still need to fetch the file to extract metadata, but we:
-      // 1. Don't store rawText in localStorage (only metadata)
-      // 2. Don't store full service objects (only name and image)
-      // 3. Fetch full content on-demand when user clicks "Add All Services"
-      // This prevents browser crashes with large marketplaces
-      const fileMetadataPromises = yamlFiles.map(async (file: any) => {
-        const cached = cachedFiles[file.name];
-
-        // Use cached metadata if file hasn't changed
-        if (cached && cached.sha === file.sha && cached.data.services) {
-          return cached.data;
-        }
-
-        // Fetch only the file to extract service metadata (not full content)
-        try {
-          const fileUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_PATH}/${file.name}`;
-          const fileResponse = await fetch(fileUrl);
-
-          if (!fileResponse.ok) {
-            throw new Error(`Failed to fetch ${file.name}`);
-          }
-
-          const rawText = await fileResponse.text();
-          const doc = jsyaml.load(rawText) as any;
-
-          // Extract only metadata (service names and images)
-          const servicesObject: Record<string, any> = {};
-          if (doc && doc.services) {
-            Object.entries(doc.services).forEach(
-              ([svcName, svcObj]: [string, any]) => {
-                servicesObject[svcName] = {
-                  name: svcName,
-                  image: svcObj.image || "",
-                  // Don't store rawService here - fetch on demand
-                };
-              }
-            );
-          }
-
-          // Return only metadata (no rawText, no full service objects)
-          return {
-            name: file.name,
-            url: fileUrl,
-            services: servicesObject,
-            serviceCount: Object.keys(servicesObject).length,
-            sha: file.sha,
-            // Mark that full content hasn't been loaded
-            contentLoaded: false,
-          };
-        } catch (e) {
-          console.error(`Error processing ${file.name}:`, e);
-          // Return cached data if available, otherwise null
-          return cached ? cached.data : null;
-        }
-      });
-
-      const fileMetadata = await Promise.all(fileMetadataPromises);
-      const filteredData = fileMetadata.filter(Boolean);
-
-      // Update cache with SHA information (metadata only)
-      const shaMap: Record<string, { sha: string }> = {};
-      filteredData.forEach((file: any) => {
-        if (file.sha) {
-          shaMap[file.name] = { sha: file.sha };
-        }
-      });
-
-      const now = Date.now();
-      setComposeFiles(filteredData);
-      setComposeCache(filteredData);
-      setComposeCacheTimestamp(now);
-
-      localStorage.setItem("composeStoreCache", JSON.stringify(filteredData));
-      localStorage.setItem("composeStoreCacheTimestamp", now.toString());
-      localStorage.setItem("composeStoreCacheSHA", JSON.stringify(shaMap));
-
-      if (!backgroundUpdate) setComposeLoading(false);
-
-      const newFiles = filteredData.filter((f: any) => !cachedFiles[f.name]);
-      if (newFiles.length > 0 && !backgroundUpdate) {
-        console.log(
-          `Loaded metadata for ${newFiles.length} new/updated files from GitHub`
-        );
-      }
-    } catch (error: any) {
-      console.error("Error fetching from GitHub:", error);
-
-      // Fallback to cached data if available
-      if (composeCache.length > 0) {
-        setComposeFiles(composeCache);
-        setComposeError(`Using cached data. Error: ${error.message}`);
-      } else {
-        setComposeFiles([]);
-        setComposeError(
-          error.message || "Failed to fetch compose files from GitHub."
-        );
-      }
-
-      if (!backgroundUpdate) setComposeLoading(false);
-    }
-  }
-
-  // Fetch full YAML content for a specific file when needed
-  async function fetchComposeFileContent(fileName: string): Promise<any> {
-    const GITHUB_OWNER = "hhftechnology";
-    const GITHUB_REPO = "Marketplace";
-    const GITHUB_PATH = "compose-files";
-    const GITHUB_BRANCH = "main";
-    const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
-
-    // Check if already loaded in cache
-    const cachedFile = composeFiles.find((f: any) => f.name === fileName);
-    if (cachedFile && cachedFile.contentLoaded && cachedFile.rawText) {
-      return cachedFile;
-    }
-
-    // Mark as loading
-    setLoadingFiles((prev) => new Set(prev).add(fileName));
-
-    try {
-      const fileUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_PATH}/${fileName}`;
-      const fileResponse = await fetch(fileUrl);
-
-      if (!fileResponse.ok) {
-        throw new Error(`Failed to fetch ${fileName}`);
-      }
-
-      const rawText = await fileResponse.text();
-      const doc = jsyaml.load(rawText) as any;
-
-      const servicesArray =
-        doc && doc.services
-          ? Object.entries(doc.services).map(
-              ([svcName, svcObj]: [string, any]) => {
-                return {
-                  name: svcName,
-                  image: svcObj.image || "",
-                  rawService: svcObj,
-                };
-              }
-            )
-          : [];
-
-      const servicesObject = servicesArray.reduce(
-        (acc, service) => {
-          acc[service.name] = service;
-          return acc;
-        },
-        {} as Record<string, any>
-      );
-
-      const fullFileData = {
-        name: fileName,
-        url: fileUrl,
-        services: servicesObject,
-        networks: doc && doc.networks ? doc.networks : {},
-        volumes: doc && doc.volumes ? doc.volumes : {},
-        rawText: rawText,
-        sha: cachedFile?.sha || "",
-        contentLoaded: true,
-      };
-
-      // Update the file in composeFiles (in-memory only, includes full content)
-      setComposeFiles((prev) =>
-        prev.map((f: any) => (f.name === fileName ? fullFileData : f))
-      );
-
-      // Update cache (but only store metadata in localStorage to avoid bloat)
-      // Full content (rawText, networks, volumes) is kept in memory only, never in localStorage
-      // We only mark that content has been loaded
-      setComposeCache((prev) => {
-        const updated = prev.map((f: any) => {
-          if (f.name === fileName) {
-            // Return only metadata, never include rawText or full content
-            const { rawText, networks, volumes, ...metadata } = fullFileData;
-            return { ...metadata, contentLoaded: true };
-          }
-          return f;
-        });
-        // Update localStorage with metadata only (no rawText)
-        localStorage.setItem("composeStoreCache", JSON.stringify(updated));
-        return updated;
-      });
-
-      return fullFileData;
-    } catch (error: any) {
-      console.error(`Error fetching content for ${fileName}:`, error);
-      throw error;
-    } finally {
-      setLoadingFiles((prev) => {
-        const next = new Set(prev);
-        next.delete(fileName);
-        return next;
-      });
-    }
-  }
-
-  function refreshComposeStore() {
-    setComposeCache([]);
-    setComposeCacheTimestamp(null);
-    localStorage.removeItem("composeStoreCache");
-    localStorage.removeItem("composeStoreCacheTimestamp");
-    localStorage.removeItem("composeStoreCacheSHA");
-    // Trigger a fresh fetch
-    fetchComposeFilesFromGitHub(false);
+  function refreshTemplateStore() {
+    setTemplateCache([]);
+    setTemplateCacheTimestamp(null);
+    localStorage.removeItem("templateStoreCache");
+    localStorage.removeItem("templateStoreCacheTimestamp");
+    fetchTemplatesFromGitHub(false);
   }
 
   function handleAddComposeServiceFull(
@@ -2789,7 +1195,122 @@ image = ""
     }
     setSelectedType("service");
     setSelectedIdx(newServiceIndex);
-    setComposeStoreOpen(false);
+  }
+
+  async function importTemplate(template: any) {
+    try {
+      // Parse docker-compose.yml
+      const doc = jsyaml.load(template.composeContent) as any;
+
+      if (!doc || !doc.services) {
+        throw new Error("Invalid docker-compose.yml in template");
+      }
+
+      // Add all services from compose file
+      const servicesArray = Object.entries(doc.services).map(
+        ([svcName, svcObj]: [string, any]) => ({
+          name: svcName,
+          image: svcObj.image || "",
+          rawService: svcObj,
+        })
+      );
+
+      // Add services one by one
+      for (const service of servicesArray) {
+        handleAddComposeServiceFull(
+          service,
+          doc.networks || {},
+          doc.volumes || {}
+        );
+      }
+
+      // Apply template.toml configuration if available
+      if (template.parsedTemplate) {
+        const parsed = template.parsedTemplate;
+
+        // Apply environment variables from template.toml
+        if (parsed.env && parsed.env.length > 0) {
+          setServices((prev) => {
+            return prev.map((svc) => {
+              // Find matching service by name from domains config
+              const domainConfig = parsed.domains?.find(
+                (d: any) => d.serviceName === svc.name
+              );
+
+              if (domainConfig && domainConfig.env) {
+                // Merge domain-specific env vars
+                const domainEnv = domainConfig.env.map((e: string) => {
+                  const [key, ...rest] = e.split("=");
+                  return { key: key.trim(), value: rest.join("=").trim() };
+                });
+
+                // Merge with existing env vars, avoiding duplicates
+                const existingKeys = new Set(svc.environment.map((e) => e.key));
+                const newEnv = domainEnv.filter(
+                  (e: { key: string; value: string }) =>
+                    !existingKeys.has(e.key)
+                );
+                return {
+                  ...svc,
+                  environment: [...svc.environment, ...newEnv],
+                };
+              }
+
+              // Apply general env vars if no domain-specific config
+              const existingKeys = new Set(svc.environment.map((e) => e.key));
+              const newEnv = parsed.env.filter(
+                (e: any) => !existingKeys.has(e.key)
+              );
+              return {
+                ...svc,
+                environment: [...svc.environment, ...newEnv],
+              };
+            });
+          });
+        }
+
+        // Apply domains configuration (ports, etc.)
+        if (parsed.domains && parsed.domains.length > 0) {
+          setServices((prev) => {
+            return prev.map((svc) => {
+              const domainConfig = parsed.domains?.find(
+                (d: any) => d.serviceName === svc.name
+              );
+
+              if (domainConfig) {
+                // Add port if not already present
+                const hasPort = svc.ports.some(
+                  (p) => p.container === String(domainConfig.port)
+                );
+
+                if (!hasPort && domainConfig.port) {
+                  return {
+                    ...svc,
+                    ports: [
+                      ...svc.ports,
+                      {
+                        host: "",
+                        container: String(domainConfig.port),
+                        protocol: "none",
+                      },
+                    ],
+                  };
+                }
+              }
+
+              return svc;
+            });
+          });
+        }
+      }
+
+      // Close dialogs
+      setTemplateDetailOpen(false);
+      setTemplateStoreOpen(false);
+    } catch (error: any) {
+      console.error("Error importing template:", error);
+      throw new Error(`Failed to import template: ${error.message}`);
+    }
   }
 
   if (!yaml) setYaml(generateYaml(services, networks, volumes));
@@ -2811,9 +1332,13 @@ image = ""
 
   return (
     <>
-      <SidebarProvider 
+      <SidebarProvider
         className="h-[calc(100vh-4rem)]"
-        style={{ height: 'calc(100vh - 4rem)', minHeight: 0, maxHeight: 'calc(100vh - 4rem)' }}
+        style={{
+          height: "calc(100vh - 4rem)",
+          minHeight: 0,
+          maxHeight: "calc(100vh - 4rem)",
+        }}
       >
         <Sidebar>
           <SidebarUI />
@@ -2843,15 +1368,15 @@ image = ""
               <Button
                 variant="outline"
                 className="mb-2"
-                onClick={() => setComposeStoreOpen(true)}
+                onClick={() => setTemplateStoreOpen(true)}
               >
-                Browse Compose Marketplace
+                Browse Templates
               </Button>
-              {/* Compose Marketplace Overlay */}
-              {composeStoreOpen && (
+              {/* Template Store Overlay */}
+              {templateStoreOpen && (
                 <div
                   className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-                  onClick={() => setComposeStoreOpen(false)}
+                  onClick={() => setTemplateStoreOpen(false)}
                 >
                   <div
                     className="relative max-w-screen-3xl w-[98vw] h-[90vh] rounded-2xl border bg-background p-8 pt-4 shadow-xl flex flex-col"
@@ -2861,8 +1386,8 @@ image = ""
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={refreshComposeStore}
-                        disabled={composeLoading}
+                        onClick={refreshTemplateStore}
+                        disabled={templateLoading}
                         className="flex items-center gap-1"
                       >
                         <svg
@@ -2882,155 +1407,153 @@ image = ""
                       </Button>
                       <button
                         className="text-xl text-muted-foreground hover:text-foreground"
-                        onClick={() => setComposeStoreOpen(false)}
-                        aria-label="Close Marketplace"
+                        onClick={() => setTemplateStoreOpen(false)}
+                        aria-label="Close Templates"
                       >
                         ×
                       </button>
                     </div>
-                    <div className="mb-1 text-2xl font-bold">Marketplace</div>
+                    <div className="mb-1 text-2xl font-bold">Templates</div>
                     <div className="mb-2 mt-0 text-base text-muted-foreground">
-                      Browse and import popular self-hosted Docker Compose
-                      services.
-                      {composeCacheTimestamp && (
+                      Browse and import templates with pre-configured Docker
+                      Compose files.
+                      {templateCacheTimestamp && (
                         <span className="ml-2 text-xs">
                           (Cached{" "}
                           {Math.round(
-                            (Date.now() - composeCacheTimestamp) / 1000 / 60
+                            (Date.now() - templateCacheTimestamp) / 1000 / 60
                           )}
                           m ago)
                         </span>
                       )}
                     </div>
                     <div className="mb-4 text-xs text-muted-foreground">
-                      Want to contribute?{" "}
+                      Templates from{" "}
                       <a
                         href="https://github.com/hhftechnology/Marketplace"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
-                        Add your compose files to the repository
+                        hhftechnology/Marketplace
                       </a>{" "}
-                      - files are automatically synced from GitHub.
+                      repository.
                     </div>
-                    <Input
-                      placeholder="Search by service name or image..."
-                      value={composeSearch}
-                      onChange={(e) => setComposeSearch(e.target.value)}
-                      className="mb-4 mt-0 text-base"
-                    />
                     <div className="flex-1 overflow-hidden">
-                      {composeLoading ? (
+                      {templateLoading ? (
                         <div className="h-32 flex items-center justify-center text-muted-foreground text-lg">
-                          {composeCache.length > 0
+                          {templateCache.length > 0
                             ? "Refreshing..."
-                            : "Loading..."}
+                            : "Loading templates..."}
                         </div>
-                      ) : composeError ? (
+                      ) : templateError ? (
                         <div className="h-32 flex items-center justify-center text-destructive text-lg">
-                          {composeError}
+                          {templateError}
                         </div>
-                      ) : composeFiles.length === 0 ? (
+                      ) : templates.length === 0 ? (
                         <div className="h-32 flex items-center justify-center text-muted-foreground text-lg">
-                          No .yml files found in the repo.
+                          No templates found.
                         </div>
                       ) : (
                         <div className="w-full h-full overflow-y-auto">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 mt-4 pb-4">
-                            {composeFiles
+                            {templates
                               .filter(
-                                (file: any) =>
-                                  file.name
-                                    .toLowerCase()
-                                    .includes(composeSearch.toLowerCase()) ||
-                                  Object.values(file.services || {}).some(
-                                    (svc: any) =>
-                                      svc.name
-                                        .toLowerCase()
-                                        .includes(composeSearch.toLowerCase())
+                                (template: any) =>
+                                  template.name
+                                    ?.toLowerCase()
+                                    .includes(templateSearch.toLowerCase()) ||
+                                  template.description
+                                    ?.toLowerCase()
+                                    .includes(templateSearch.toLowerCase()) ||
+                                  template.tags?.some((tag: string) =>
+                                    tag
+                                      .toLowerCase()
+                                      .includes(templateSearch.toLowerCase())
                                   )
                               )
-                              .map((file: any) => (
+                              .map((template: any) => (
                                 <div
-                                  key={file.name}
-                                  className="bg-card rounded-lg shadow p-4 flex flex-col gap-2 items-start justify-between border border-border min-h-0"
+                                  key={template.id}
+                                  className="bg-card rounded-lg shadow p-4 flex flex-col gap-2 items-start justify-between border border-border min-h-0 cursor-pointer hover:border-primary transition-colors"
+                                  onClick={async () => {
+                                    try {
+                                      const details =
+                                        await fetchTemplateDetails(template.id);
+                                      setSelectedTemplate(details);
+                                      setTemplateDetailOpen(true);
+                                    } catch (error: any) {
+                                      setTemplateError(
+                                        `Failed to load template: ${error.message}`
+                                      );
+                                    }
+                                  }}
                                 >
-                                  <div className="font-bold text-lg break-words w-full min-h-0">
-                                    {file.name.replace(".yml", "")}
+                                  <div className="w-full flex items-start gap-3">
+                                    {template.logo ? (
+                                      <img
+                                        src={`https://raw.githubusercontent.com/Dokploy/templates/main/blueprints/${template.id}/${template.logo}`}
+                                        alt={template.name}
+                                        className="w-12 h-12 object-contain flex-shrink-0"
+                                        onError={(
+                                          e: React.SyntheticEvent<
+                                            HTMLImageElement,
+                                            Event
+                                          >
+                                        ) => {
+                                          (
+                                            e.target as HTMLImageElement
+                                          ).style.display = "none";
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="w-12 h-12 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                                        <Settings className="w-6 h-6 text-muted-foreground" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-lg break-words">
+                                        {template.name}
+                                      </div>
+                                      {template.version && (
+                                        <div className="text-xs text-muted-foreground">
+                                          v{template.version}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="text-sm text-muted-foreground break-words w-full min-h-0">
-                                    {file.serviceCount ||
-                                      Object.keys(file.services || {})
-                                        .length}{" "}
-                                    service
-                                    {(file.serviceCount ||
-                                      Object.keys(file.services || {})
-                                        .length) !== 1
-                                      ? "s"
-                                      : ""}
-                                  </div>
+                                  <p className="text-sm text-muted-foreground line-clamp-2 w-full">
+                                    {template.description}
+                                  </p>
+                                  {template.tags &&
+                                    template.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 w-full">
+                                        {template.tags
+                                          .slice(0, 3)
+                                          .map((tag: string) => (
+                                            <span
+                                              key={tag}
+                                              className="px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded border border-primary/20"
+                                            >
+                                              {tag}
+                                            </span>
+                                          ))}
+                                        {template.tags.length > 3 && (
+                                          <span className="px-1.5 py-0.5 text-xs text-muted-foreground">
+                                            +{template.tags.length - 3}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
                                   <Button
                                     size="sm"
                                     className="mt-2 w-full"
-                                    disabled={loadingFiles.has(file.name)}
-                                    onClick={async () => {
-                                      try {
-                                        // Fetch full content if not already loaded
-                                        const fullFile =
-                                          await fetchComposeFileContent(
-                                            file.name
-                                          );
-
-                                        // Now add all services with full data
-                                        Object.entries(
-                                          fullFile.services || {}
-                                        ).forEach(
-                                          ([serviceName, serviceData]: [
-                                            string,
-                                            any,
-                                          ]) => {
-                                            handleAddComposeServiceFull(
-                                              {
-                                                name: serviceName,
-                                                image: serviceData.image || "",
-                                                rawService:
-                                                  serviceData.rawService ||
-                                                  serviceData,
-                                              },
-                                              fullFile.networks,
-                                              fullFile.volumes
-                                            );
-                                          }
-                                        );
-                                      } catch (error: any) {
-                                        console.error(
-                                          `Error loading ${file.name}:`,
-                                          error
-                                        );
-                                        setComposeError(
-                                          `Failed to load ${file.name}: ${error.message}`
-                                        );
-                                      }
-                                    }}
+                                    variant="outline"
                                   >
-                                    {loadingFiles.has(file.name) ? (
-                                      <>Loading...</>
-                                    ) : (
-                                      <>Add All Services</>
-                                    )}
+                                    View Details
                                   </Button>
                                 </div>
                               ))}
-                            {composeFiles.every(
-                              (file) =>
-                                (file.serviceCount ||
-                                  Object.keys(file.services || {}).length) === 0
-                            ) && (
-                              <div className="col-span-full h-32 flex items-center justify-center text-muted-foreground text-lg">
-                                No services found in .yml files.
-                              </div>
-                            )}
                           </div>
                         </div>
                       )}
@@ -5958,6 +4481,219 @@ image = ""
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Template Detail Dialog */}
+      <Dialog
+        open={templateDetailOpen}
+        onOpenChange={(open) => {
+          setTemplateDetailOpen(open);
+          if (!open) {
+            setSelectedTemplate(null);
+            setTemplateDetailTab("overview");
+          }
+        }}
+      >
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl lg:max-w-5xl max-h-[95vh] sm:max-h-[90vh] flex flex-col p-4 sm:p-6">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>
+              {selectedTemplate?.name || "Template Details"}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedTemplate && (
+            <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
+              {/* Tab Buttons */}
+              <div className="flex gap-2 sm:gap-3 border-b pb-2 flex-shrink-0">
+                <Button
+                  variant={
+                    templateDetailTab === "overview" ? "default" : "ghost"
+                  }
+                  size="sm"
+                  className="text-xs sm:text-sm"
+                  onClick={() => setTemplateDetailTab("overview")}
+                >
+                  Overview
+                </Button>
+                <Button
+                  variant={
+                    templateDetailTab === "compose" ? "default" : "ghost"
+                  }
+                  size="sm"
+                  className="text-xs sm:text-sm"
+                  onClick={() => setTemplateDetailTab("compose")}
+                >
+                  Docker Compose
+                </Button>
+              </div>
+
+              {/* Tab Content */}
+              <div className="flex-1 min-h-0 overflow-auto">
+                {templateDetailTab === "overview" && (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
+                      {selectedTemplate.logoUrl && (
+                        <img
+                          src={selectedTemplate.logoUrl}
+                          alt={selectedTemplate.name}
+                          className="w-12 h-12 sm:w-16 sm:h-16 object-contain flex-shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg sm:text-xl font-bold break-words">
+                          {selectedTemplate.name}
+                        </h3>
+                        {selectedTemplate.version && (
+                          <p className="text-xs sm:text-sm text-muted-foreground">
+                            Version {selectedTemplate.version}
+                          </p>
+                        )}
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-2 break-words">
+                          {selectedTemplate.description}
+                        </p>
+                        {selectedTemplate.tags &&
+                          selectedTemplate.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {selectedTemplate.tags.map((tag: string) => (
+                                <span
+                                  key={tag}
+                                  className="px-2 py-1 text-xs bg-primary/10 text-primary rounded border border-primary/20"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        {selectedTemplate.links && (
+                          <div className="flex flex-wrap gap-3 sm:gap-4 mt-4">
+                            {selectedTemplate.links.github && (
+                              <a
+                                href={selectedTemplate.links.github}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs sm:text-sm text-primary hover:underline"
+                              >
+                                GitHub
+                              </a>
+                            )}
+                            {selectedTemplate.links.website && (
+                              <a
+                                href={selectedTemplate.links.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs sm:text-sm text-primary hover:underline"
+                              >
+                                Website
+                              </a>
+                            )}
+                            {selectedTemplate.links.docs && (
+                              <a
+                                href={selectedTemplate.links.docs}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs sm:text-sm text-primary hover:underline"
+                              >
+                                Docs
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {templateDetailTab === "compose" && (
+                  <div className="flex flex-col gap-3 sm:gap-4 h-full min-h-0">
+                    {selectedTemplate.composeContent ? (
+                      <>
+                        <div className="border rounded-lg overflow-hidden flex-1 min-h-[300px] sm:min-h-[400px] flex flex-col">
+                          <CodeEditor
+                            content={selectedTemplate.composeContent}
+                            onContentChange={() => {}}
+                            width="100%"
+                            height="100%"
+                          />
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end pt-2 flex-shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full sm:w-auto"
+                            onClick={() => {
+                              copyToClipboard(selectedTemplate.composeContent);
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy Compose
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full sm:w-auto"
+                            onClick={() => {
+                              downloadFile(
+                                selectedTemplate.composeContent,
+                                "docker-compose.yml",
+                                "text/yaml"
+                              );
+                            }}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center text-muted-foreground py-8">
+                        Docker Compose content not available
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Import Button */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end border-t pt-4 mt-auto flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={() => {
+                    setTemplateDetailOpen(false);
+                    setTemplateStoreOpen(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={async () => {
+                    try {
+                      await importTemplate(selectedTemplate);
+                      setTemplateDetailOpen(false);
+                      setTemplateStoreOpen(false);
+                    } catch (error: any) {
+                      setTemplateError(
+                        `Failed to import template: ${error.message}`
+                      );
+                    }
+                  }}
+                >
+                  Import Template
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
+
+export const Route = createFileRoute("/docker/compose-builder")({
+  component: App,
+});
