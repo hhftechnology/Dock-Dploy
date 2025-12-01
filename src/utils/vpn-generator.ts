@@ -22,12 +22,13 @@ export function generateTailscaleServeConfig(
   };
 
   // Build proxy URL based on inside protocol
-  const proxyUrl = `${insideProtocol}://127.0.0.1:${internalPort}`;
+  const proxyProtocol = insideProtocol === "https+insecure" ? "https" : insideProtocol;
+  const proxyUrl = `${proxyProtocol}://127.0.0.1:${internalPort}`;
 
   if (protocol === "HTTPS") {
     const certDomainKey = certDomain
       ? certDomain
-      : "$${TS_CERT_DOMAIN}";
+      : "${TS_CERT_DOMAIN}";
     config.Web = {
       [`${certDomainKey}:${externalPort}`]: {
         Handlers: {
