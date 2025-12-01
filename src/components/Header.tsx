@@ -34,6 +34,7 @@ export function Header() {
             }}
           />
           <span className="font-bold text-lg">Dock-Dploy</span>
+          <span className="text-[8px] text-muted-foreground hidden sm:inline-block">by HHF Technology</span>
         </div>
         <div className="flex items-center gap-2">
           <Button

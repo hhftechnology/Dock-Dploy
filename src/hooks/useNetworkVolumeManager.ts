@@ -8,6 +8,7 @@ export interface UseNetworkVolumeManagerReturn {
   selectedNetworkIdx: number | null;
   setSelectedNetworkIdx: (idx: number | null) => void;
   addNetwork: () => void;
+  bulkAddNetworks: (networks: NetworkConfig[]) => void;
   updateNetwork: (idx: number, field: keyof NetworkConfig, value: any) => void;
   removeNetwork: (idx: number) => void;
   // Volumes
@@ -15,6 +16,7 @@ export interface UseNetworkVolumeManagerReturn {
   selectedVolumeIdx: number | null;
   setSelectedVolumeIdx: (idx: number | null) => void;
   addVolume: () => void;
+  bulkAddVolumes: (volumes: VolumeConfig[]) => void;
   updateVolume: (idx: number, field: keyof VolumeConfig, value: any) => void;
   removeVolume: (idx: number) => void;
 }
@@ -164,17 +166,36 @@ export function useNetworkVolumeManager({
     });
   }, [setServices, onSelectionChange]);
 
+  // Bulk add methods for template imports
+  const bulkAddNetworks = useCallback((newNetworks: NetworkConfig[]) => {
+    setNetworks((prev) => {
+      const existingNames = new Set(prev.map((n) => n.name));
+      const uniqueNetworks = newNetworks.filter((n) => !existingNames.has(n.name));
+      return [...prev, ...uniqueNetworks];
+    });
+  }, []);
+
+  const bulkAddVolumes = useCallback((newVolumes: VolumeConfig[]) => {
+    setVolumes((prev) => {
+      const existingNames = new Set(prev.map((v) => v.name));
+      const uniqueVolumes = newVolumes.filter((v) => !existingNames.has(v.name));
+      return [...prev, ...uniqueVolumes];
+    });
+  }, []);
+
   return {
     networks,
     selectedNetworkIdx,
     setSelectedNetworkIdx,
     addNetwork,
+    bulkAddNetworks,
     updateNetwork,
     removeNetwork,
     volumes,
     selectedVolumeIdx,
     setSelectedVolumeIdx,
     addVolume,
+    bulkAddVolumes,
     updateVolume,
     removeVolume,
   };

@@ -9,15 +9,20 @@ export function generateTailscaleServeConfig(
   internalPort: string,
   path: string,
   protocol: "HTTPS" | "HTTP",
-  certDomain: string
+  certDomain: string,
+  insideProtocol: "http" | "https" | "https+insecure" = "http"
 ): string {
   const config: any = {
     TCP: {
       [externalPort]: {
         HTTPS: protocol === "HTTPS",
+        HTTP: protocol === "HTTP",
       },
     },
   };
+
+  // Build proxy URL based on inside protocol
+  const proxyUrl = `${insideProtocol}://127.0.0.1:${internalPort}`;
 
   if (protocol === "HTTPS") {
     const certDomainKey = certDomain
@@ -27,17 +32,19 @@ export function generateTailscaleServeConfig(
       [`${certDomainKey}:${externalPort}`]: {
         Handlers: {
           [path]: {
-            Proxy: `http://127.0.0.1:${internalPort}`,
+            Proxy: proxyUrl,
           },
         },
       },
     };
   } else {
-    config.TCP[externalPort] = {
-      HTTP: true,
-      Handlers: {
-        [path]: {
-          Proxy: `http://127.0.0.1:${internalPort}`,
+    // HTTP mode: use Web section with localhost
+    config.Web = {
+      [`localhost:${externalPort}`]: {
+        Handlers: {
+          [path]: {
+            Proxy: proxyUrl,
+          },
         },
       },
     };
@@ -57,6 +64,11 @@ export function generateVpnService(vpnConfig: VPNConfig | undefined): any {
   let service: any = {
     restart: "always",
   };
+
+  // Add selected networks
+  if (vpnConfig.networks && vpnConfig.networks.length > 0) {
+    service.networks = vpnConfig.networks;
+  }
 
   switch (vpnConfig.type) {
     case "tailscale": {
@@ -107,7 +119,10 @@ export function generateVpnService(vpnConfig: VPNConfig | undefined): any {
         NEWT_ID: newt.newtId ? "${NEWT_ID}" : undefined,
         NEWT_SECRET: newt.newtSecret ? "${NEWT_SECRET}" : undefined,
       };
-      service.networks = [newt.networkName];
+      service.networks = [
+        ...(service.networks || []),
+        newt.networkName
+      ];
       Object.keys(service.environment).forEach(
         (key) =>
           service.environment[key] === undefined &&
@@ -148,7 +163,13 @@ export function generateVpnService(vpnConfig: VPNConfig | undefined): any {
       const zt = vpnConfig.zerotier!;
       service.image = "zerotier/zerotier:latest";
       service.privileged = true;
-      service.networks = ["host"];
+      service.networks = ["host"]; // ZeroTier needs host networking
+      // If host networking is used, we can't attach to other networks
+      if (vpnConfig.networks && vpnConfig.networks.length > 0) {
+        // Warning: ZeroTier uses host networking, ignoring selected networks
+        delete service.networks;
+        service.network_mode = "host";
+      }
       service.volumes = [zt.identityPath + ":/var/lib/zerotier-one"];
       service.environment = {
         ZT_NC_NETWORK: zt.networkId ? "${ZT_NETWORK_ID}" : undefined,
