@@ -1,3 +1,5 @@
+
+import { useState, useEffect } from "react";
 import { ChevronDown, Container, FileText, Clock } from "lucide-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
@@ -10,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from "./ui/sidebar";
 import {
   Collapsible,
@@ -48,18 +51,42 @@ export function SidebarUI() {
   const navigate = useNavigate();
   const router = useRouter();
   const location = router.state.location;
+  const { toggleSidebar, state } = useSidebar();
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  // Initialize open groups based on current route
+  useEffect(() => {
+    const newOpenGroups = { ...openGroups };
+    let hasChanges = false;
+    Object.entries(groupedItems).forEach(([groupName, groupItems]) => {
+      if (groupItems.some((item) => location.pathname === item.url)) {
+        if (!newOpenGroups[groupName]) {
+          newOpenGroups[groupName] = true;
+          hasChanges = true;
+        }
+      }
+    });
+    if (hasChanges) {
+      setOpenGroups(newOpenGroups);
+    }
+  }, [location.pathname]);
 
   return (
     <>
       <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+        <div className="flex items-center gap-2">
+          <div 
+            onClick={toggleSidebar}
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground cursor-pointer hover:bg-sidebar-primary/90 transition-colors"
+          >
             <Container className="h-4 w-4" />
           </div>
-          <div className="grid flex-1 text-left text-sm leading-tight">
-            <span className="truncate font-semibold">Dock-Dploy</span>
+          <div className="grid flex-1 text-left text-sm leading-tight group-data-[state=collapsed]:hidden">
+            <div className="flex items-baseline gap-1 truncate">
+              <span className="font-semibold">Setup Tools</span>
+              <span className="text-xs text-sidebar-foreground/70 truncate">v0.1.0</span>
+            </div>
             <span className="truncate text-xs text-sidebar-foreground/70">
-              Setup Tools
             </span>
           </div>
         </div>
@@ -67,14 +94,13 @@ export function SidebarUI() {
 
       <SidebarContent>
         {Object.entries(groupedItems).map(([groupName, groupItems]) => {
-          const isGroupOpen = groupItems.some(
-            (item) => location.pathname === item.url
-          );
+          const isOpen = state === "collapsed" ? true : (openGroups[groupName] || false);
 
           return (
             <Collapsible
               key={groupName}
-              defaultOpen={isGroupOpen}
+              open={isOpen}
+              onOpenChange={(open) => setOpenGroups((prev) => ({ ...prev, [groupName]: open }))}
               className="group/collapsible"
             >
               <SidebarGroup>
@@ -118,9 +144,9 @@ export function SidebarUI() {
         })}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-2">
-        <div className="px-2 py-1.5 text-xs text-sidebar-foreground/70">
-          © {new Date().getFullYear()} Dock-Dploy
+      <SidebarFooter className="p-4 border-t border-border/50">
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground group-data-[state=collapsed]:hidden">
+          <p>© 2025 Dock-Dploy</p>
         </div>
       </SidebarFooter>
     </>

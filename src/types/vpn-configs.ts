@@ -16,6 +16,7 @@ export interface TailscaleConfig {
   serveInternalPort: string;
   servePath: string;
   serveProtocol: "HTTPS" | "HTTP";
+  serveInsideProtocol: "http" | "https" | "https+insecure";
   containerName: string;
   enableHealthCheck: boolean;
   healthCheckEndpoint: string;
@@ -73,4 +74,5 @@ export interface VPNConfig {
   zerotier?: ZerotierConfig;
   netbird?: NetbirdConfig;
   servicesUsingVpn: string[]; // Service names that should use VPN
+  networks?: string[]; // Networks the VPN service should attach to
 }

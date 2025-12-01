@@ -182,13 +182,13 @@ export function generateYaml(
           : svc.networks && svc.networks.filter(Boolean).length
             ? svc.networks.filter(Boolean)
             : undefined,
-      user: svc.user ? `"${svc.user}"` : undefined,
+      user: svc.user || undefined,
       working_dir: svc.working_dir || undefined,
       labels:
         svc.labels && svc.labels.filter((l) => l.key).length
           ? svc.labels
               .filter((l) => l.key)
-              .map(({ key, value }) => `"${key}=${value}"`)
+              .map(({ key, value }) => `${key}=${value}`)
           : undefined,
       privileged: svc.privileged !== undefined ? svc.privileged : undefined,
       read_only: svc.read_only !== undefined ? svc.read_only : undefined,
@@ -331,7 +331,8 @@ export function generateYaml(
       ts.serveInternalPort,
       ts.servePath,
       ts.serveProtocol,
-      ts.certDomain
+      ts.certDomain,
+      ts.serveInsideProtocol || "http"
     );
 
     if (!compose.configs) {
@@ -373,7 +374,7 @@ export function generateYaml(
             n.labels && n.labels.length
               ? n.labels
                   .filter((l) => l.key)
-                  .map(({ key, value }) => `"${key}=${value}"`)
+                  .map(({ key, value }) => `${key}=${value}`)
               : undefined,
           ipam:
             n.ipam.driver || n.ipam.config.length || n.ipam.options.length
@@ -436,7 +437,7 @@ export function generateYaml(
         if (v.labels && v.labels.length) {
           externalVolume.labels = v.labels
             .filter((l) => l.key)
-            .map(({ key, value }) => `"${key}=${value}"`);
+            .map(({ key, value }) => `${key}=${value}`);
         }
 
         compose.volumes[v.name] = externalVolume;
@@ -463,7 +464,7 @@ export function generateYaml(
             v.labels && v.labels.length
               ? v.labels
                   .filter((l) => l.key)
-                  .map(({ key, value }) => `"${key}=${value}"`)
+                  .map(({ key, value }) => `${key}=${value}`)
               : undefined,
         };
       }

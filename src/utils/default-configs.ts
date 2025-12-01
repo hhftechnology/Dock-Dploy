@@ -32,6 +32,7 @@ export function defaultTailscaleConfig(): TailscaleConfig {
     serveInternalPort: "8080",
     servePath: "/",
     serveProtocol: "HTTPS",
+    serveInsideProtocol: "http",
     // ScaleTail patterns - defaults
     containerName: "",
     enableHealthCheck: true,

@@ -193,8 +193,8 @@ ${serviceUnit}
   }, [scheduleType, config.name]);
 
   return (
-    <SidebarProvider>
-        <Sidebar>
+    <SidebarProvider defaultOpen={true}>
+        <Sidebar collapsible="icon">
           <SidebarUI />
         </Sidebar>
         <SidebarInset>
