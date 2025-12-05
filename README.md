@@ -6,7 +6,7 @@ A web-based tool for building, managing, and converting Docker Compose files, co
 
 <div align="center">
     
-[![Docker](https://img.shields.io/docker/pulls/hhftechnology/Dock-Dploy?style=flat-square)](https://hub.docker.com/r/hhftechnology/Dock-Dploy)
+[![Docker](https://img.shields.io/docker/pulls/hhftechnology/dock-dploy?style=flat-square)](https://hub.docker.com/r/hhftechnology/dock-dploy)
 ![Stars](https://img.shields.io/github/stars/hhftechnology/Dock-Dploy?style=flat-square)
 [![Discord](https://img.shields.io/discord/994247717368909884?logo=discord&style=flat-square)](https://discord.gg/HDCt9MjyMJ)
 [![React](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://reactjs.org/)
