@@ -76,7 +76,7 @@ export function Header({ onOpenMarket }: HeaderProps) {
         <div className="header-actions">
           <a
             className="icon-btn"
-            href="https://discord.gg/"
+            href="https://discord.gg/HDCt9MjyMJ"
             target="_blank"
             rel="noreferrer"
             aria-label="Discord"

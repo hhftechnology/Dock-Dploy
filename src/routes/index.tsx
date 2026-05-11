@@ -7,7 +7,7 @@ export const Route = createFileRoute("/")({
 const STATS = [
   { num: "12+", label: "Output formats" },
   { num: "6", label: "VPN providers" },
-  { num: "100+", label: "Curated templates" },
+  { num: "300+", label: "Curated templates" },
 ];
 
 const FEATURES = [
@@ -20,13 +20,20 @@ const FEATURES = [
   },
   {
     kicker: "02",
+    title: "Pangolin Blueprints",
+    body: " Eazy pangolin blueprint editor and visualizer. Define your stack as a blueprint, then export to compose or configs.",
+    bullets: ["Pangolin Blueprint Editor", "Visualizer", "Export to Compose/Configs"],
+    cta: { label: "Open Blueprint Builder", to: "/blueprint-builder" },
+  },
+  {
+    kicker: "03",
     title: "Configs that respect taste",
     body: "Generate Homepage dashboard configs, service catalogs, and friends — visually edited, exported clean. No more hand-tuning YAML in a text editor.",
     bullets: ["Visual config editor", "Schema-validated", "One-click export"],
     cta: { label: "Open Config Builder", to: "/config-builder" },
   },
   {
-    kicker: "03",
+    kicker: "04",
     title: "Schedules without ceremony",
     body: "Cron, GitHub Actions, systemd timers — described once, exported everywhere. A friendlier cron expression builder makes intervals readable.",
     bullets: ["Cron expression builder", "Multi-format export", "Plain-English preview"],
@@ -70,8 +77,8 @@ function LandingPage() {
               and <span className="serif-em">ship</span> Docker stacks.
             </h1>
             <p className="lede">
-              Dock-Dploy is a calm, visual surface for Docker Compose, configs, and
-              schedulers. Friendly enough for first-timers, fast enough for
+              Dock-Dploy is a to the point, visual surface for Docker Compose, Pangolin BluePrints, Configs, and
+              Schedulers. Friendly enough for first-timers, fast enough for
               homelab operators, honest enough for production.
             </p>
             <div className="hero-cta-row">
@@ -84,7 +91,7 @@ function LandingPage() {
               </button>
               <a
                 className="btn btn-text-link"
-                href="https://github.com/hhftechnologies/Dock-Dploy"
+                href="https://github.com/hhftechnology/Dock-Dploy"
                 target="_blank"
                 rel="noreferrer"
               >

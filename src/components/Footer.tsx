@@ -18,25 +18,25 @@ const COLS: FooterCol[] = [
   {
     heading: "Resources",
     links: [
-      { label: "Documentation", href: "https://github.com/hhftechnologies/Dock-Dploy#readme" },
-      { label: "Changelog", href: "https://github.com/hhftechnologies/Dock-Dploy/releases" },
-      { label: "Roadmap", href: "https://github.com/hhftechnologies/Dock-Dploy/issues" },
+      { label: "Documentation", href: "https://github.com/hhftechnology/Dock-Dploy#readme" },
+      { label: "Changelog", href: "https://github.com/hhftechnology/Dock-Dploy/releases" },
+      { label: "Roadmap", href: "https://github.com/hhftechnology/Dock-Dploy/issues" },
     ],
   },
   {
     heading: "Community",
     links: [
-      { label: "GitHub", href: "https://github.com/hhftechnologies/Dock-Dploy" },
-      { label: "Discord", href: "https://discord.gg/" },
-      { label: "Contribute", href: "https://github.com/hhftechnologies/Dock-Dploy/blob/main/CONTRIBUTING.md" },
+      { label: "GitHub", href: "https://github.com/hhftechnology/Dock-Dploy" },
+      { label: "Discord", href: "https://discord.gg/HDCt9MjyMJ" },
+      { label: "Contribute", href: "https://github.com/hhftechnology/Dock-Dploy/blob/main/CONTRIBUTING.md" },
     ],
   },
   {
     heading: "Legal",
     links: [
       { label: "License (AGPL-3.0)", href: "https://www.gnu.org/licenses/agpl-3.0.txt" },
-      { label: "Privacy", href: "/" },
-      { label: "Terms", href: "/" },
+      { label: "Privacy", href: "https://forum.hhf.technology/privacy" },
+      { label: "Terms", href: "https://forum.hhf.technology/tos" },
     ],
   },
 ];
