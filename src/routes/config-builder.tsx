@@ -71,6 +71,7 @@ function ConfigBuilderRoute() {
   const handleNav = (view: BuilderView) => {
     if (view === "compose") navigate({ to: "/docker/compose-builder" });
     else if (view === "scheduler") navigate({ to: "/scheduler-builder" });
+    else if (view === "blueprint") navigate({ to: "/blueprint-builder" });
   };
 
   return (

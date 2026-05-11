@@ -141,6 +141,7 @@ ${serviceUnit}
   const handleNav = (view: BuilderView) => {
     if (view === "compose") navigate({ to: "/docker/compose-builder" });
     else if (view === "config") navigate({ to: "/config-builder" });
+    else if (view === "blueprint") navigate({ to: "/blueprint-builder" });
   };
 
   return (

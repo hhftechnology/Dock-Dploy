@@ -48,7 +48,6 @@ type OutputTab = "compose" | "env";
 function BlueprintBuilderRoute() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [view, setView] = useState<BuilderView>("blueprint");
   const [blueprint, setBlueprint] = useState<Blueprint>(defaultBlueprint());
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [outputTab, setOutputTab] = useState<OutputTab>("compose");
@@ -62,10 +61,9 @@ function BlueprintBuilderRoute() {
 
   const handleNavView = useCallback(
     (next: BuilderView) => {
-      setView(next);
       if (next === "compose") navigate({ to: "/docker/compose-builder" });
-      if (next === "config") navigate({ to: "/config-builder" });
-      if (next === "scheduler") navigate({ to: "/scheduler-builder" });
+      else if (next === "config") navigate({ to: "/config-builder" });
+      else if (next === "scheduler") navigate({ to: "/scheduler-builder" });
     },
     [navigate],
   );
@@ -136,7 +134,7 @@ function BlueprintBuilderRoute() {
 
   return (
     <div className="builder-shell builder-shell--three">
-      <SetupSidebar view={view} onNav={handleNavView} />
+      <SetupSidebar view="blueprint" onNav={handleNavView} />
 
       {/* Column 2: Configuration */}
       <section className="config-col">

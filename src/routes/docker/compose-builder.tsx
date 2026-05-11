@@ -520,6 +520,9 @@ function ComposeBuilderRoute() {
       case "scheduler":
         navigate({ to: "/scheduler-builder" });
         return;
+      case "blueprint":
+        navigate({ to: "/blueprint-builder" });
+        return;
     }
   };
 
