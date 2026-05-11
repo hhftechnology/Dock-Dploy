@@ -62,9 +62,10 @@ export function Header({ onOpenMarket }: HeaderProps) {
               if (path.startsWith("/docker/compose-builder")) {
                 dispatch();
               } else {
-                navigate({ to: "/docker/compose-builder" });
-                // After router commits, fire the event so the builder opens the modal.
-                window.setTimeout(dispatch, 50);
+                navigate({
+                  to: "/docker/compose-builder",
+                  state: { openTemplates: true },
+                } as any);
               }
             }}
           >

@@ -119,11 +119,21 @@ function ComposeBuilderRoute() {
 
   const templateStore = useTemplateStore();
 
+  const routerState = useRouterState();
   // The global Header's Templates button dispatches this event; we listen here
   // so the marketplace modal opens regardless of which entry point was used.
   useMountEffect(() => {
     const handler = () => templateStore.setTemplateStoreOpen(true);
     window.addEventListener("dockdploy:open-templates", handler);
+
+    if ((routerState.location.state as any)?.openTemplates) {
+      handler();
+      navigate({
+        replace: true,
+        state: (prev: any) => ({ ...prev, openTemplates: false }),
+      } as any);
+    }
+
     return () =>
       window.removeEventListener("dockdploy:open-templates", handler);
   });

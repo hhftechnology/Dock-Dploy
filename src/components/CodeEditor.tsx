@@ -1,7 +1,8 @@
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState, useRef } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "./ui/button";
 import { useTheme } from "./ThemeProvider";
+import { useMountEffect } from "../hooks/useMountEffect";
 
 /**
  * CodeMirror is heavy (~500KB before tree-shaking) and not needed on the
@@ -32,13 +33,28 @@ export function CodeEditor({
   maxHeight,
 }: CodeEditorProps) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
   const { theme } = useTheme();
+
+  useMountEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  });
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+      timerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        timerRef.current = null;
+      }, 2000);
     } catch {
       setCopied(false);
     }
