@@ -29,8 +29,10 @@ jobs:
             - name: dock-dploy
               id: image
               run: |
-                  IMAGE_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+                  IMAGE_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2 | tr '[:upper:]' '[:lower:]')
+                  REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
                   echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+                  echo "repo=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
@@ -56,7 +58,7 @@ jobs:
               with:
                   images: |
                       ${{ env.REGISTRY_DOCKERHUB }}/${{ secrets.dockerhub_username }}/${{ steps.image.outputs.name }}
-                      ${{ env.REGISTRY_GHCR }}/${{ github.repository }}
+                      ${{ env.REGISTRY_GHCR }}/${{ steps.image.outputs.repo }}
                   tags: |
                       type=ref,event=branch
                       type=ref,event=pr

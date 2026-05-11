@@ -1,11 +1,14 @@
 import type { VPNConfig } from "../../../types/vpn-configs";
-import type { ServiceConfig } from "../../../types/compose";
+import type { NetworkConfig, ServiceConfig } from "../../../types/compose";
+import { AlertCircle } from "lucide-react";
 import { VpnProviderTiles } from "./VpnProviderTiles";
 import { VpnFields } from "./VpnFields";
+import { vpnConfigWarning } from "../../../utils/validation/vpn";
 
 export interface VpnTabProps {
   vpn: VPNConfig;
   services: ServiceConfig[];
+  networks: NetworkConfig[];
   updateVpnType: (next: VPNConfig["type"] | "none") => void;
   updateTailscaleConfig: (
     p: Partial<NonNullable<VPNConfig["tailscale"]>>,
@@ -24,12 +27,14 @@ export interface VpnTabProps {
     p: Partial<NonNullable<VPNConfig["netbird"]>>,
   ) => void;
   updateServicesUsingVpn: (services: string[]) => void;
+  updateVpnNetworks: (networks: string[]) => void;
 }
 
 export function VpnTab(props: VpnTabProps) {
   const {
     vpn,
     services,
+    networks,
     updateVpnType,
     updateTailscaleConfig,
     updateNewtConfig,
@@ -38,6 +43,7 @@ export function VpnTab(props: VpnTabProps) {
     updateZerotierConfig,
     updateNetbirdConfig,
     updateServicesUsingVpn,
+    updateVpnNetworks,
   } = props;
 
   const statusLabel = vpn.enabled && vpn.type ? "Connected" : "Disabled";
@@ -52,6 +58,17 @@ export function VpnTab(props: VpnTabProps) {
     else current.add(name);
     updateServicesUsingVpn(Array.from(current));
   };
+
+  const toggleNetwork = (name: string) => {
+    const current = new Set(vpn.networks ?? []);
+    if (current.has(name)) current.delete(name);
+    else current.add(name);
+    updateVpnNetworks(Array.from(current));
+  };
+
+  const namedServices = services.filter((s) => s.name?.trim());
+  const namedNetworks = networks.filter((n) => n.name?.trim());
+  const warning = vpn.enabled && vpn.type ? vpnConfigWarning(vpn) : null;
 
   return (
     <div className="tab-content vpn-tab">
@@ -89,6 +106,7 @@ export function VpnTab(props: VpnTabProps) {
 
       <VpnFields
         vpn={vpn}
+        services={namedServices}
         updateTailscale={updateTailscaleConfig}
         updateNewt={updateNewtConfig}
         updateCloudflared={updateCloudflaredConfig}
@@ -97,12 +115,24 @@ export function VpnTab(props: VpnTabProps) {
         updateNetbird={updateNetbirdConfig}
       />
 
-      {vpn.enabled && vpn.type && services.length > 0 && (
+      {warning && (
+        <div className="vpn-warning" role="alert">
+          <AlertCircle size={14} />
+          <div>
+            <strong>Configuration warning</strong>
+            <p>{warning}</p>
+          </div>
+        </div>
+      )}
+
+      {vpn.enabled && vpn.type && (
         <>
-          <div className="vpn-section-label">Routing</div>
+          <div className="vpn-section-label">Services using VPN</div>
           <div className="vpn-routing">
-            {services.map((svc) =>
-              svc.name?.trim() ? (
+            {namedServices.length === 0 ? (
+              <p className="vpn-hint">Add services first.</p>
+            ) : (
+              namedServices.map((svc) => (
                 <label className="check-row" key={svc.name}>
                   <input
                     type="checkbox"
@@ -112,12 +142,40 @@ export function VpnTab(props: VpnTabProps) {
                   <span>
                     <span className="check-title">Route {svc.name} through VPN</span>
                     <span className="check-sub">
-                      Adds <code>network_mode: service:{vpn.type}</code> or attaches
-                      the VPN network.
+                      {vpn.type === "tailscale" || vpn.type === "cloudflared" ? (
+                        <>
+                          Adds <code>network_mode: service:{vpn.type}</code>
+                        </>
+                      ) : (
+                        <>Attaches the VPN network to this service</>
+                      )}
                     </span>
                   </span>
                 </label>
-              ) : null,
+              ))
+            )}
+          </div>
+
+          <div className="vpn-section-label">Attach to networks</div>
+          <div className="vpn-routing">
+            {namedNetworks.length === 0 ? (
+              <p className="vpn-hint">Add top-level networks first.</p>
+            ) : (
+              namedNetworks.map((net) => (
+                <label className="check-row" key={net.name}>
+                  <input
+                    type="checkbox"
+                    checked={(vpn.networks ?? []).includes(net.name)}
+                    onChange={() => toggleNetwork(net.name)}
+                  />
+                  <span>
+                    <span className="check-title">{net.name}</span>
+                    <span className="check-sub">
+                      The VPN sidecar joins this user-defined network.
+                    </span>
+                  </span>
+                </label>
+              ))
             )}
           </div>
         </>

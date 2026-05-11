@@ -53,7 +53,12 @@ export function ServicesTab({
             const isActive =
               selectedType === "service" && selectedIdx === idx;
             const displayName = svc.name?.trim() || "";
-            const meta = svc.image?.trim() || "no image specified";
+            const imageName = svc.image?.trim() || "";
+            const meta = imageName || "no image specified";
+            // Unnamed-and-imageless rows are the placeholder slot; the user
+            // can't usefully delete it (we'd just regenerate one). Hide the
+            // trash icon to keep that affordance honest.
+            const showTrash = Boolean(displayName || imageName);
             return (
               <div
                 key={idx}
@@ -83,18 +88,20 @@ export function ServicesTab({
                   <span className="service-row-meta">{meta}</span>
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="icon-trash"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveService(idx);
-                    }}
-                    aria-label={`Remove service ${displayName || idx + 1}`}
-                    title="Remove service"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {showTrash && (
+                    <button
+                      type="button"
+                      className="icon-trash"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveService(idx);
+                      }}
+                      aria-label={`Remove service ${displayName || idx + 1}`}
+                      title="Remove service"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                   <ChevronRight size={16} className="service-row-chev" />
                 </div>
               </div>

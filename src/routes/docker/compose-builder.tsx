@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { SetupSidebar, type BuilderView } from "../../components/SetupSidebar";
 import { ConfigColumn } from "../../components/compose-builder/ConfigColumn";
@@ -39,7 +39,6 @@ export type {
 } from "../../types/compose";
 export type { VPNConfig } from "../../types/vpn-configs";
 
-import { useNavigate } from "@tanstack/react-router";
 import type { ServiceFormApi } from "../../components/compose-builder/service-form-api";
 
 export const Route = createFileRoute("/docker/compose-builder")({
@@ -105,6 +104,7 @@ function ComposeBuilderRoute() {
     updateZerotierConfig,
     updateNetbirdConfig,
     updateServicesUsingVpn,
+    updateVpnNetworks,
   } = useVpnConfig();
 
   const { yaml, validationError, validationSuccess, validateAndReformat } =
@@ -408,14 +408,21 @@ function ComposeBuilderRoute() {
 
   function removeService(idx: number) {
     setServices((prev) => {
+      if (idx < 0 || idx >= prev.length) return prev;
       const next = [...prev];
       next.splice(idx, 1);
+      // Invariant: always keep at least one service so the ServiceForm has
+      // something to render. Removing the last row replaces it with a fresh
+      // unnamed default.
+      if (next.length === 0) next.push(defaultService());
       return next;
     });
-    
+
     if (selectedType === "service" && selectedIdx !== null) {
       if (selectedIdx === idx) {
-        selectService(services.length > 1 ? Math.max(0, idx - 1) : null);
+        // Fall back to the previous row, or 0 when the deleted row was
+        // replaced by a fresh default.
+        selectService(Math.max(0, idx - 1));
       } else if (selectedIdx > idx) {
         selectService(selectedIdx - 1);
       }
@@ -562,6 +569,8 @@ function ComposeBuilderRoute() {
           updateZerotierConfig,
           updateNetbirdConfig,
           updateServicesUsingVpn,
+          updateVpnNetworks,
+          networks,
         }}
       />
 

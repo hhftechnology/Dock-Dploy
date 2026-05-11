@@ -1205,6 +1205,65 @@ a {
   flex-direction: column;
   gap: 10px;
 }
+.vpn-warning {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  background: rgba(212, 160, 23, 0.08);
+  border-radius: var(--r-md);
+  color: var(--body-strong);
+  font-size: 12.5px;
+}
+.vpn-warning strong {
+  display: block;
+  font-weight: 500;
+  color: var(--ink);
+}
+.vpn-warning p {
+  margin: 2px 0 0;
+  color: var(--body);
+}
+.vpn-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 0 2px;
+}
+.vpn-serve-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-left: 2px solid var(--hairline-strong);
+  margin-left: 4px;
+}
+.vpn-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 6px 0;
+  margin-top: 8px;
+  color: var(--body);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.vpn-advanced-toggle:hover {
+  color: var(--ink);
+}
+.vpn-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-left: 2px solid var(--hairline-strong);
+  margin-left: 4px;
+}
 .check-row {
   display: grid;
   grid-template-columns: 18px 1fr;
@@ -1406,6 +1465,18 @@ a {
   color: var(--error);
   margin-top: -2px;
   font-weight: 500;
+}
+/* Toggle-style field: switch anchors to the bottom so a label that wraps to
+   two lines does not push the switch out of alignment with sibling cells. */
+.svc-field--toggle {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 60px;
+}
+.svc-field--toggle .field-label {
+  display: block;
 }
 .svc-field--error .input,
 .input[aria-invalid="true"] {

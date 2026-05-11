@@ -10,6 +10,7 @@ import {
   validateServices,
   validateVolumes,
 } from "../utils/validation";
+import { validateVpnConfig } from "../utils/validation/vpn";
 import { generateYaml } from "../utils/yaml-generator";
 import { defaultVPNConfig } from "../utils/default-configs";
 
@@ -63,6 +64,7 @@ export function useYamlValidation({
         ...validateServices(services),
         ...validateNetworks(networks),
         ...validateVolumes(volumes),
+        ...validateVpnConfig(vpnConfig || defaultVPNConfig()),
       ];
       if (errors.length > 0) {
         setValidationError(errors.join("; "));
