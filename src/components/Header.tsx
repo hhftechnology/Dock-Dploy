@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { label: "Compose", id: "compose", to: "/docker/compose-builder" },
   { label: "Config", id: "config", to: "/config-builder" },
   { label: "Scheduler", id: "scheduler", to: "/scheduler-builder" },
+  { label: "Blueprint", id: "blueprint", to: "/blueprint-builder" },
   // "templates" handled inline — opens the marketplace modal
 ] as const;
 

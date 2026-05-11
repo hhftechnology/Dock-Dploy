@@ -1416,6 +1416,31 @@ a {
   box-shadow: 0 0 0 3px rgba(198, 69, 69, 0.16);
   border-color: var(--error);
 }
+/* Blueprint builder */
+.bp-errors {
+  margin: 12px 24px;
+  padding: 10px 12px;
+  border: 1px solid var(--error);
+  border-radius: var(--r-md);
+  background: rgba(198, 69, 69, 0.06);
+  color: var(--error);
+  font-size: 12px;
+}
+.bp-errors strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.bp-errors ul {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.bp-code {
+  white-space: pre;
+  padding: 24px;
+  display: block;
+}
 .input {
   height: 40px;
   padding: 0 14px;

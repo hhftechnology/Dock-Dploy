@@ -4,7 +4,7 @@
 import { useState, type ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 
-export type BuilderView = "compose" | "config" | "scheduler";
+export type BuilderView = "compose" | "config" | "scheduler" | "blueprint";
 
 interface RailItem {
   id: BuilderView;
@@ -46,6 +46,18 @@ const RAIL_ITEMS: RailItem[] = [
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <circle cx="12" cy="12" r="9" />
         <polyline points="12 7 12 12 15 14" />
+      </svg>
+    ),
+  },
+  {
+    id: "blueprint",
+    group: "Pangolin",
+    label: "Blueprint Builder",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M3 7l9-4 9 4-9 4-9-4z" />
+        <path d="M3 12l9 4 9-4" />
+        <path d="M3 17l9 4 9-4" />
       </svg>
     ),
   },

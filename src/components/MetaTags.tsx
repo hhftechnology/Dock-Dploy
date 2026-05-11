@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { updateMetaTags } from "../lib/meta-tags";
 import type { MetaTagsConfig } from "../lib/meta-tags";
@@ -10,32 +11,27 @@ interface MetaTagsProps {
 }
 
 /**
- * Updates document.title and meta tags as a render-time side effect.
+ * Updates document.title and meta tags after the DOM is updated.
  *
- * The DOM read of document.title is idempotent — calling updateMetaTags with
- * the same inputs writes the same values, so doing it during render is safe
- * (no observable user-visible side effect beyond the title bar). This replaces
- * the previous useEffect-based implementation, which created a microtask
- * stampede on route changes and could lose updates during fast-switching.
+ * We use useLayoutEffect instead of pure render phase mutation to prevent
+ * inconsistent behavior with concurrent rendering and Suspense.
  */
 export function MetaTags({ title, description, image, type }: MetaTagsProps) {
   const router = useRouterState();
   const pathname = router.location.pathname;
 
-  const routeMeta = routeMetaTags[pathname];
-  const config: MetaTagsConfig = {
-    title: title || routeMeta?.title,
-    description: description || routeMeta?.description,
-    image: image || routeMeta?.image,
-    type: type || routeMeta?.type,
-    url: typeof window !== "undefined" ? window.location.href : undefined,
-  };
+  useLayoutEffect(() => {
+    const routeMeta = routeMetaTags[pathname];
+    const config: MetaTagsConfig = {
+      title: title || routeMeta?.title,
+      description: description || routeMeta?.description,
+      image: image || routeMeta?.image,
+      type: type || routeMeta?.type,
+      url: window.location.href,
+    };
 
-  // Mutate document during render. SSR-safe via the document guard inside
-  // updateMetaTags + the lib's own typeof window checks.
-  if (typeof document !== "undefined") {
     updateMetaTags(config);
-  }
+  }, [title, description, image, type, pathname]);
 
   return null;
 }

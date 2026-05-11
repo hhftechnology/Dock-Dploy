@@ -2,7 +2,13 @@ import { Label } from "../../components/ui/label";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import { Toggle } from "../../components/ui/toggle";
+import { ValidatedShadField } from "../../components/ui/validated-field";
 import type { VolumeConfig } from "../../types/compose";
+import {
+  validateLabelKey,
+  validateVolumeDriver,
+  validateVolumeName,
+} from "../../utils/validation";
 
 interface VolumeFormProps {
   volume: VolumeConfig;
@@ -20,26 +26,22 @@ export function VolumeForm({ volume, onUpdate }: VolumeFormProps) {
 
       {/* Basic Settings */}
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Volume Name</Label>
-          <Input
-            value={volume.name || ""}
-            onChange={(e) => onUpdate("name", e.target.value)}
-            placeholder="e.g. app-data"
-            className="shadow-sm"
-          />
-        </div>
+        <ValidatedShadField
+          label="Volume Name"
+          value={volume.name || ""}
+          onChange={(v) => onUpdate("name", v)}
+          validate={validateVolumeName}
+          placeholder="e.g. app-data"
+        />
 
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Driver</Label>
-          <Input
-            value={volume.driver || ""}
-            onChange={(e) => onUpdate("driver", e.target.value)}
-            placeholder="e.g. local"
-            className="shadow-sm"
-          />
-          <p className="text-xs text-muted-foreground">Default: local</p>
-        </div>
+        <ValidatedShadField
+          label="Driver"
+          value={volume.driver || ""}
+          onChange={(v) => onUpdate("driver", v)}
+          validate={validateVolumeDriver}
+          hint="Default: local"
+          placeholder="e.g. local"
+        />
       </div>
 
       {/* Driver Options */}
@@ -101,7 +103,9 @@ export function VolumeForm({ volume, onUpdate }: VolumeFormProps) {
         </div>
         <div className="space-y-2">
           {volume.labels && volume.labels.length > 0 ? (
-            volume.labels.map((label, idx) => (
+            volume.labels.map((label, idx) => {
+              const keyErr = validateLabelKey(label.key);
+              return (
               <div key={idx} className="flex gap-2 items-center p-2 bg-muted/30 rounded-md">
                 <Input
                   value={label.key}
@@ -115,6 +119,8 @@ export function VolumeForm({ volume, onUpdate }: VolumeFormProps) {
                   }}
                   placeholder="Key"
                   className="flex-1 shadow-sm"
+                  aria-invalid={keyErr ? true : undefined}
+                  title={keyErr ?? undefined}
                 />
                 <Input
                   value={label.value}
@@ -151,7 +157,8 @@ export function VolumeForm({ volume, onUpdate }: VolumeFormProps) {
                   </svg>
                 </Button>
               </div>
-            ))
+              );
+            })
           ) : (
             <div className="text-xs text-muted-foreground text-center py-4">
               No labels added

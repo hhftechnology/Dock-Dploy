@@ -50,6 +50,24 @@ const VOLUME_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 // Stop signal: SIGTERM/SIGKILL/etc. or numeric.
 const STOP_SIGNAL_RE = /^(SIG[A-Z]+|\d{1,2})$/;
 
+// HTTP(S) URL.
+const URL_RE = /^https?:\/\/[^\s]+$/i;
+
+// Absolute UNIX path.
+const ABS_UNIX_PATH_RE = /^\/[^\s]*$/;
+
+// ZeroTier network ID: 16 hex chars.
+const ZEROTIER_ID_RE = /^[a-f0-9]{16}$/i;
+
+// Compose-style env reference: ${NAME} or literal value.
+const ENV_OR_VALUE_RE = /^(\$\{[A-Z_][A-Z0-9_]*\}|[^\s${]+(?:\s+[^\s${]+)*)$/i;
+
+// Tailscale auth key (literal "tskey-" prefix or env reference).
+const TAILSCALE_AUTHKEY_RE = /^(tskey-[a-zA-Z0-9-]+|\$\{[A-Z_][A-Z0-9_]*\})$/;
+
+// Docker label key: lowercased reverse-DNS-ish, dot/slash/dash allowed.
+const LABEL_KEY_RE = /^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*$/i;
+
 // IPv4 octet.
 const IPV4_OCTET = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
 
@@ -233,6 +251,43 @@ export const volumeHostPathSchema = z
   .string()
   .min(1, "Host path or volume name is required");
 
+// URL (http or https).
+export const urlSchema = z
+  .string()
+  .regex(URL_RE, "Must be an http(s) URL");
+
+// Absolute UNIX path (used for wireguard config paths, zerotier identity path).
+export const absoluteUnixPathSchema = z
+  .string()
+  .regex(ABS_UNIX_PATH_RE, "Must be an absolute path (e.g. /etc/wireguard/wg0.conf)");
+
+// ZeroTier network ID (16 hex). Allow env reference for templating.
+export const zerotierIdSchema = z
+  .string()
+  .refine(
+    (v) => ZEROTIER_ID_RE.test(v) || /^\$\{[A-Z_][A-Z0-9_]*\}$/.test(v),
+    "Must be a 16-character hex network ID or ${ENV_VAR}",
+  );
+
+// Tailscale auth key (tskey-* or env reference).
+export const tailscaleAuthKeySchema = z
+  .string()
+  .regex(
+    TAILSCALE_AUTHKEY_RE,
+    "Must be a tskey-... value or ${ENV_VAR} reference",
+  );
+
+// Secret-or-env: non-empty literal OR env reference (used by tunnel tokens, secrets).
+export const secretSchema = z
+  .string()
+  .min(1, "Required")
+  .regex(ENV_OR_VALUE_RE, "Must be a literal value or ${ENV_VAR} reference");
+
+// Docker label key.
+export const labelKeySchema = z
+  .string()
+  .regex(LABEL_KEY_RE, "Label key may use letters, digits, dots, dashes, underscores, and /");
+
 // ---------- Legacy adapters (return string | null) ----------
 
 function adapt(schema: z.ZodTypeAny) {
@@ -281,4 +336,10 @@ export const validate = {
   extraHost: adaptOptional(extraHostSchema),
   restartPolicy: adaptOptional(restartPolicySchema),
   volumeHostPath: adaptOptional(volumeHostPathSchema),
+  url: adaptOptional(urlSchema),
+  absoluteUnixPath: adaptOptional(absoluteUnixPathSchema),
+  zerotierId: adaptOptional(zerotierIdSchema),
+  tailscaleAuthKey: adaptOptional(tailscaleAuthKeySchema),
+  secret: adapt(secretSchema),
+  labelKey: adaptOptional(labelKeySchema),
 };

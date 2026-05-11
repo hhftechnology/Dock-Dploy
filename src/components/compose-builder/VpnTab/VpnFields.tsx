@@ -1,5 +1,15 @@
 import type { VPNConfig } from "../../../types/vpn-configs";
-import { Field } from "../ServiceForm/Field";
+import { Field, ValidatedInput } from "../ServiceForm/Field";
+import {
+  validateAbsoluteUnixPath,
+  validateHostname,
+  validateIpAddress,
+  validateNetworkName,
+  validateSecret,
+  validateTailscaleAuthKey,
+  validateUrl,
+  validateZerotierId,
+} from "../../../utils/validation";
 
 interface CommonProps {
   vpn: VPNConfig;
@@ -39,25 +49,21 @@ function WireguardFields({ vpn, updateWireguard }: CommonProps) {
     <div className="vpn-fields">
       <div className="vpn-section-label">Connection</div>
       <div className="vpn-field-row">
-        <Field
+        <ValidatedInput
           label="Config path"
           hint="Path inside the container to the wg conf file"
-        >
-          <input
-            className="input"
-            value={cfg.configPath}
-            onChange={(e) => updateWireguard({ configPath: e.target.value })}
-            placeholder="/etc/wireguard/wg0.conf"
-          />
-        </Field>
-        <Field label="Interface">
-          <input
-            className="input"
-            value={cfg.interfaceName}
-            onChange={(e) => updateWireguard({ interfaceName: e.target.value })}
-            placeholder="wg0"
-          />
-        </Field>
+          value={cfg.configPath}
+          onChange={(v) => updateWireguard({ configPath: v })}
+          validate={validateAbsoluteUnixPath}
+          placeholder="/etc/wireguard/wg0.conf"
+        />
+        <ValidatedInput
+          label="Interface"
+          value={cfg.interfaceName}
+          onChange={(v) => updateWireguard({ interfaceName: v })}
+          validate={validateNetworkName}
+          placeholder="wg0"
+        />
       </div>
       <div className="upload-card">
         <span className="upload-icon">⬆</span>
@@ -76,34 +82,30 @@ function TailscaleFields({ vpn, updateTailscale }: CommonProps) {
   return (
     <div className="vpn-fields">
       <div className="vpn-section-label">Connection</div>
-      <Field
+      <ValidatedInput
         label="Auth key"
         hint="Use ${TS_AUTHKEY} to read from .env. Treated as a secret."
-      >
-        <input
-          className="input input-secret"
-          value={cfg.authKey}
-          onChange={(e) => updateTailscale({ authKey: e.target.value })}
-          placeholder="tskey-..."
-        />
-      </Field>
+        className="input input-secret"
+        value={cfg.authKey}
+        onChange={(v) => updateTailscale({ authKey: v })}
+        validate={validateTailscaleAuthKey}
+        placeholder="tskey-..."
+      />
       <div className="vpn-field-row">
-        <Field label="Hostname">
-          <input
-            className="input"
-            value={cfg.hostname}
-            onChange={(e) => updateTailscale({ hostname: e.target.value })}
-            placeholder="edge"
-          />
-        </Field>
-        <Field label="Exit node">
-          <input
-            className="input"
-            value={cfg.exitNode}
-            onChange={(e) => updateTailscale({ exitNode: e.target.value })}
-            placeholder="100.x.y.z"
-          />
-        </Field>
+        <ValidatedInput
+          label="Hostname"
+          value={cfg.hostname}
+          onChange={(v) => updateTailscale({ hostname: v })}
+          validate={validateHostname}
+          placeholder="edge"
+        />
+        <ValidatedInput
+          label="Exit node"
+          value={cfg.exitNode}
+          onChange={(v) => updateTailscale({ exitNode: v })}
+          validate={validateIpAddress}
+          placeholder="100.x.y.z"
+        />
       </div>
     </div>
   );
@@ -115,14 +117,15 @@ function CloudflaredFields({ vpn, updateCloudflared }: CommonProps) {
   return (
     <div className="vpn-fields">
       <div className="vpn-section-label">Connection</div>
-      <Field label="Tunnel token" hint="From Cloudflare Zero Trust dashboard">
-        <input
-          className="input input-secret"
-          value={cfg.tunnelToken}
-          onChange={(e) => updateCloudflared({ tunnelToken: e.target.value })}
-          placeholder="${TUNNEL_TOKEN}"
-        />
-      </Field>
+      <ValidatedInput
+        label="Tunnel token"
+        hint="From Cloudflare Zero Trust dashboard"
+        className="input input-secret"
+        value={cfg.tunnelToken}
+        onChange={(v) => updateCloudflared({ tunnelToken: v })}
+        validate={validateSecret}
+        placeholder="${TUNNEL_TOKEN}"
+      />
     </div>
   );
 }
@@ -133,40 +136,38 @@ function NewtFields({ vpn, updateNewt }: CommonProps) {
   return (
     <div className="vpn-fields">
       <div className="vpn-section-label">Connection</div>
-      <Field label="Endpoint">
-        <input
-          className="input"
-          value={cfg.endpoint}
-          onChange={(e) => updateNewt({ endpoint: e.target.value })}
-          placeholder="https://app.pangolin.net"
-        />
-      </Field>
+      <ValidatedInput
+        label="Endpoint"
+        value={cfg.endpoint}
+        onChange={(v) => updateNewt({ endpoint: v })}
+        validate={validateUrl}
+        placeholder="https://app.pangolin.net"
+      />
       <div className="vpn-field-row">
-        <Field label="Newt ID">
-          <input
-            className="input input-secret"
-            value={cfg.newtId}
-            onChange={(e) => updateNewt({ newtId: e.target.value })}
-            placeholder="${NEWT_ID}"
-          />
-        </Field>
-        <Field label="Newt secret">
-          <input
-            className="input input-secret"
-            value={cfg.newtSecret}
-            onChange={(e) => updateNewt({ newtSecret: e.target.value })}
-            placeholder="${NEWT_SECRET}"
-          />
-        </Field>
-      </div>
-      <Field label="Network name">
-        <input
-          className="input"
-          value={cfg.networkName}
-          onChange={(e) => updateNewt({ networkName: e.target.value })}
-          placeholder="newt"
+        <ValidatedInput
+          label="Newt ID"
+          className="input input-secret"
+          value={cfg.newtId}
+          onChange={(v) => updateNewt({ newtId: v })}
+          validate={validateSecret}
+          placeholder="${NEWT_ID}"
         />
-      </Field>
+        <ValidatedInput
+          label="Newt secret"
+          className="input input-secret"
+          value={cfg.newtSecret}
+          onChange={(v) => updateNewt({ newtSecret: v })}
+          validate={validateSecret}
+          placeholder="${NEWT_SECRET}"
+        />
+      </div>
+      <ValidatedInput
+        label="Network name"
+        value={cfg.networkName}
+        onChange={(v) => updateNewt({ networkName: v })}
+        validate={validateNetworkName}
+        placeholder="newt"
+      />
     </div>
   );
 }
@@ -183,16 +184,21 @@ function ZerotierFields({ vpn, updateZerotier }: CommonProps) {
           value={cfg.networkId}
           onChange={(e) => updateZerotier({ networkId: e.target.value })}
           placeholder="${ZT_NETWORK_ID}"
+          aria-invalid={
+            cfg.networkId && validateZerotierId(cfg.networkId)
+              ? true
+              : undefined
+          }
+          title={validateZerotierId(cfg.networkId) ?? undefined}
         />
       </Field>
-      <Field label="Identity path">
-        <input
-          className="input"
-          value={cfg.identityPath}
-          onChange={(e) => updateZerotier({ identityPath: e.target.value })}
-          placeholder="/var/lib/zerotier-one"
-        />
-      </Field>
+      <ValidatedInput
+        label="Identity path"
+        value={cfg.identityPath}
+        onChange={(v) => updateZerotier({ identityPath: v })}
+        validate={validateAbsoluteUnixPath}
+        placeholder="/var/lib/zerotier-one"
+      />
     </div>
   );
 }
@@ -203,22 +209,21 @@ function NetbirdFields({ vpn, updateNetbird }: CommonProps) {
   return (
     <div className="vpn-fields">
       <div className="vpn-section-label">Connection</div>
-      <Field label="Setup key">
-        <input
-          className="input input-secret"
-          value={cfg.setupKey}
-          onChange={(e) => updateNetbird({ setupKey: e.target.value })}
-          placeholder="${NB_SETUP_KEY}"
-        />
-      </Field>
-      <Field label="Management URL">
-        <input
-          className="input"
-          value={cfg.managementUrl}
-          onChange={(e) => updateNetbird({ managementUrl: e.target.value })}
-          placeholder="https://api.netbird.io"
-        />
-      </Field>
+      <ValidatedInput
+        label="Setup key"
+        className="input input-secret"
+        value={cfg.setupKey}
+        onChange={(v) => updateNetbird({ setupKey: v })}
+        validate={validateSecret}
+        placeholder="${NB_SETUP_KEY}"
+      />
+      <ValidatedInput
+        label="Management URL"
+        value={cfg.managementUrl}
+        onChange={(v) => updateNetbird({ managementUrl: v })}
+        validate={validateUrl}
+        placeholder="https://api.netbird.io"
+      />
     </div>
   );
 }

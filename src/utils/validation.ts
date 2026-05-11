@@ -47,6 +47,12 @@ export const validateVolumeName = validate.volumeName;
 export const validateIpAddress = validate.ipAddress;
 export const validateIpv4Cidr = validate.ipv4Cidr;
 export const validateExtraHost = validate.extraHost;
+export const validateUrl = validate.url;
+export const validateAbsoluteUnixPath = validate.absoluteUnixPath;
+export const validateZerotierId = validate.zerotierId;
+export const validateTailscaleAuthKey = validate.tailscaleAuthKey;
+export const validateSecret = validate.secret;
+export const validateLabelKey = validate.labelKey;
 
 // ---------- Service-level aggregator ----------
 
@@ -111,7 +117,8 @@ export function validateServices(services: ServiceConfig[]): string[] {
       const portPrefix = `${prefix} port ${pIdx + 1}`;
       push(errors, `${portPrefix} host`, validate.port(port.host));
       push(errors, `${portPrefix} container`, validate.port(port.container));
-      if (port.protocol) {
+      // "none" is the UI sentinel for "unspecified protocol"; skip the enum check.
+      if (port.protocol && port.protocol !== "none") {
         push(errors, `${portPrefix} protocol`, validate.protocol(port.protocol));
       }
     });

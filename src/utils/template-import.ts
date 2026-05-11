@@ -377,7 +377,7 @@ export function parseComposeTemplate(composeContent: string): {
   try {
     doc = jsyaml.load(composeContent);
   } catch (err: any) {
-    throw new Error(`Invalid YAML format: ${err.message}`);
+    throw new Error(`Invalid YAML format: ${err.message}`, { cause: err });
   }
 
   if (!doc || typeof doc !== "object") {
