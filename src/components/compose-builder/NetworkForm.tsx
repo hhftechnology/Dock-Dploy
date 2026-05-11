@@ -1,7 +1,14 @@
 import { Label } from "../../components/ui/label";
 import { Input } from "../../components/ui/input";
 import { Toggle } from "../../components/ui/toggle";
+import { ValidatedShadField } from "../../components/ui/validated-field";
 import type { NetworkConfig } from "../../types/compose";
+import {
+  validateIpAddress,
+  validateIpv4Cidr,
+  validateNetworkDriver,
+  validateNetworkName,
+} from "../../utils/validation";
 
 interface NetworkFormProps {
   network: NetworkConfig;
@@ -19,26 +26,22 @@ export function NetworkForm({ network, onUpdate }: NetworkFormProps) {
 
       {/* Basic Settings */}
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Network Name</Label>
-          <Input
-            value={network.name || ""}
-            onChange={(e) => onUpdate("name", e.target.value)}
-            placeholder="e.g. frontend-network"
-            className="shadow-sm"
-          />
-        </div>
+        <ValidatedShadField
+          label="Network Name"
+          value={network.name || ""}
+          onChange={(v) => onUpdate("name", v)}
+          validate={validateNetworkName}
+          placeholder="e.g. frontend-network"
+        />
 
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Driver</Label>
-          <Input
-            value={network.driver || ""}
-            onChange={(e) => onUpdate("driver", e.target.value)}
-            placeholder="e.g. bridge, overlay"
-            className="shadow-sm"
-          />
-          <p className="text-xs text-muted-foreground">Common: bridge (default), overlay, host, none</p>
-        </div>
+        <ValidatedShadField
+          label="Driver"
+          value={network.driver || ""}
+          onChange={(v) => onUpdate("driver", v)}
+          validate={validateNetworkDriver}
+          hint="Common: bridge (default), overlay, host, none"
+          placeholder="e.g. bridge, overlay"
+        />
       </div>
 
       {/* Advanced Options */}
@@ -128,23 +131,27 @@ export function NetworkForm({ network, onUpdate }: NetworkFormProps) {
           {network.ipam?.config?.map((cfg, idx) => (
             <div key={idx} className="flex gap-2 items-start p-3 border rounded-md bg-card/50">
               <div className="flex-1 space-y-2">
-                <Input
+                <ValidatedShadField
+                  label=""
                   value={cfg.subnet || ""}
-                  onChange={(e) => {
+                  onChange={(v) => {
                     const newConfig = [...(network.ipam?.config || [])];
-                    newConfig[idx] = { ...newConfig[idx], subnet: e.target.value };
+                    newConfig[idx] = { ...newConfig[idx], subnet: v };
                     onUpdate("ipam", { ...network.ipam, config: newConfig });
                   }}
+                  validate={validateIpv4Cidr}
                   placeholder="Subnet (e.g. 192.168.1.0/24)"
                   className="shadow-sm text-sm"
                 />
-                <Input
+                <ValidatedShadField
+                  label=""
                   value={cfg.gateway || ""}
-                  onChange={(e) => {
+                  onChange={(v) => {
                     const newConfig = [...(network.ipam?.config || [])];
-                    newConfig[idx] = { ...newConfig[idx], gateway: e.target.value };
+                    newConfig[idx] = { ...newConfig[idx], gateway: v };
                     onUpdate("ipam", { ...network.ipam, config: newConfig });
                   }}
+                  validate={validateIpAddress}
                   placeholder="Gateway (e.g. 192.168.1.1)"
                   className="shadow-sm text-sm"
                 />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,9 +9,11 @@ import {
 import { Button } from "../ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import { CodeEditor } from "../CodeEditor";
-import { Copy, Download, Github, Globe, BookOpen } from "lucide-react";
+import { AlertTriangle, Copy, Download, Globe, BookOpen } from "lucide-react";
+import { GithubIcon as Github } from "../icons/BrandIcons";
 import { copyToClipboard, downloadFile } from "../../utils/clipboard";
 import { useToast } from "../ui/toast";
+import { validateComposeYaml } from "../../utils/validation/compose";
 
 export interface TemplateDetails {
   id: string;
@@ -46,6 +48,13 @@ export function TemplateDetailModal({
   const [activeTab, setActiveTab] = useState("overview");
   const [importing, setImporting] = useState(false);
   const { toast } = useToast();
+
+  // Pre-import validation: parse the compose YAML and flag any problems
+  // before the user can pull it into their workspace.
+  const validation = useMemo(() => {
+    if (!template?.composeContent) return { ok: true, errors: [] as string[] };
+    return validateComposeYaml(template.composeContent);
+  }, [template?.composeContent]);
 
   const handleCopy = async () => {
     if (!template?.composeContent) return;
@@ -91,6 +100,14 @@ export function TemplateDetailModal({
 
   const handleImport = async () => {
     if (!template) return;
+    if (!validation.ok) {
+      toast({
+        title: "Template failed validation",
+        description: `${validation.errors.length} issue${validation.errors.length === 1 ? "" : "s"} found — fix the upstream template before importing`,
+        variant: "error",
+      });
+      return;
+    }
 
     setImporting(true);
     try {
@@ -124,7 +141,7 @@ export function TemplateDetailModal({
         }
       }}
     >
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col gap-0 p-0">
+      <DialogContent className="max-w-6xl dialog-h-tall flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-start gap-4">
             {template.logoUrl && (
@@ -224,6 +241,27 @@ export function TemplateDetailModal({
           </div>
         </DialogHeader>
 
+        {/* Validation banner */}
+        {!validation.ok && validation.errors.length > 0 && (
+          <div className="px-6 pt-3">
+            <div className="rounded-md border border-destructive bg-destructive/5 px-3 py-2">
+              <div className="flex items-center gap-2 text-destructive font-medium text-sm">
+                <AlertTriangle className="h-4 w-4" />
+                Validation failed — {validation.errors.length} issue
+                {validation.errors.length === 1 ? "" : "s"}
+              </div>
+              <ul className="mt-1 text-xs text-destructive list-disc list-inside space-y-0.5 max-h-32 overflow-y-auto">
+                {validation.errors.slice(0, 12).map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+                {validation.errors.length > 12 && (
+                  <li>…and {validation.errors.length - 12} more</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="px-6 pt-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -252,7 +290,7 @@ export function TemplateDetailModal({
               {template.composeContent ? (
                 <div className="space-y-4">
                   <div className="border rounded-lg overflow-hidden">
-                    <div className="min-h-[500px] max-h-[60vh]">
+                    <div className="editor-h-lg dialog-h-short">
                       <CodeEditor
                         content={template.composeContent}
                         onContentChange={() => {}}
@@ -297,7 +335,13 @@ export function TemplateDetailModal({
             </Button>
             <Button
               onClick={handleImport}
-              disabled={importing || loading}
+              disabled={importing || loading || !validation.ok}
+              className="btn btn-primary"
+              title={
+                !validation.ok
+                  ? "Fix the validation errors above before importing"
+                  : undefined
+              }
             >
               {importing ? "Importing..." : "Import Template"}
             </Button>

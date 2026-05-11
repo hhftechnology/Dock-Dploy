@@ -1,130 +1,231 @@
-// Validation utilities for Docker Compose configurations
+// Validation utilities for Docker Compose configurations.
+// All field-level rules live in src/utils/validation/schemas.ts (Zod).
+// This module exposes the legacy `validate*` functions and the service-level
+// `validateServices` aggregator used by the YAML-validation hook.
 
-import type { ServiceConfig } from "../types/compose";
+import type {
+  NetworkConfig,
+  ServiceConfig,
+  VolumeConfig,
+} from "../types/compose";
+import { validate } from "./validation/schemas";
+
+// ---------- Legacy single-field validators (kept for existing call sites) ----------
 
 export function validateServiceName(name: string): string | null {
-  if (!name) return "Service name is required";
-  if (!/^[a-z0-9_-]+$/i.test(name)) {
-    return "Service name must contain only alphanumeric characters, hyphens, and underscores";
-  }
-  return null;
+  return validate.serviceName(name);
 }
 
 export function validatePort(port: string): string | null {
-  if (!port) return null;
-  const num = parseInt(port, 10);
-  if (isNaN(num) || num < 1 || num > 65535) {
-    return "Port must be between 1 and 65535";
-  }
-  return null;
+  return validate.port(port);
 }
 
 export function validateEnvVarKey(key: string): string | null {
-  if (!key) return null;
-  if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) {
-    return "Environment variable key should start with a letter or underscore and contain only alphanumeric characters and underscores";
-  }
-  return null;
+  return validate.envKey(key);
 }
 
 export function validateCpuValue(cpu: string): string | null {
-  if (!cpu) return null;
-  if (!/^\d+(\.\d+)?$/.test(cpu)) {
-    return "CPU value must be a number (e.g., 0.5, 1, 2)";
-  }
-  const num = parseFloat(cpu);
-  if (num < 0) {
-    return "CPU value must be positive";
-  }
-  return null;
+  return validate.cpu(cpu);
 }
 
 export function validateMemoryValue(memory: string): string | null {
-  if (!memory) return null;
-  if (!/^\d+[kmgKMG]?[bB]?$/.test(memory) && !/^\d+$/.test(memory)) {
-    return "Memory value must be a number with optional unit (e.g., 512m, 2g, 1024)";
-  }
-  return null;
+  return validate.memory(memory);
+}
+
+// New single-field validators surfaced for inline form UI.
+export const validateImage = validate.image;
+export const validateContainerName = validate.containerName;
+export const validateHostname = validate.hostname;
+export const validateUser = validate.user;
+export const validateDuration = validate.duration;
+export const validateStopSignal = validate.stopSignal;
+export const validateNetworkMode = validate.networkMode;
+export const validateNetworkDriver = validate.networkDriver;
+export const validateVolumeDriver = validate.volumeDriver;
+export const validateNetworkName = validate.networkName;
+export const validateVolumeName = validate.volumeName;
+export const validateIpAddress = validate.ipAddress;
+export const validateIpv4Cidr = validate.ipv4Cidr;
+export const validateExtraHost = validate.extraHost;
+export const validateUrl = validate.url;
+export const validateAbsoluteUnixPath = validate.absoluteUnixPath;
+export const validateZerotierId = validate.zerotierId;
+export const validateTailscaleAuthKey = validate.tailscaleAuthKey;
+export const validateSecret = validate.secret;
+export const validateLabelKey = validate.labelKey;
+
+// ---------- Service-level aggregator ----------
+
+function prefixFor(svc: ServiceConfig, idx: number): string {
+  return `Service "${svc.name || idx + 1}"`;
+}
+
+function push(errors: string[], prefix: string, err: string | null) {
+  if (err) errors.push(`${prefix}: ${err}`);
 }
 
 export function validateServices(services: ServiceConfig[]): string[] {
   const errors: string[] = [];
+  const seenNames = new Set<string>();
 
   services.forEach((svc, idx) => {
+    const prefix = prefixFor(svc, idx);
+
+    // Name (required + format + uniqueness)
     if (!svc.name) {
       errors.push(`Service ${idx + 1}: Name is required`);
     } else {
-      const nameError = validateServiceName(svc.name);
-      if (nameError) errors.push(`Service "${svc.name}": ${nameError}`);
-    }
-
-    if (!svc.image) {
-      errors.push(`Service "${svc.name || idx + 1}": Image is required`);
-    }
-
-    svc.ports.forEach((port, pIdx) => {
-      if (port.host) {
-        const portError = validatePort(port.host);
-        if (portError)
-          errors.push(
-            `Service "${svc.name || idx + 1}" port ${pIdx + 1} host: ${portError}`
-          );
+      push(errors, prefix, validate.serviceName(svc.name));
+      if (seenNames.has(svc.name)) {
+        errors.push(`${prefix}: Duplicate service name`);
       }
-      if (port.container) {
-        const portError = validatePort(port.container);
-        if (portError)
-          errors.push(
-            `Service "${svc.name || idx + 1}" port ${pIdx + 1} container: ${portError}`
-          );
+      seenNames.add(svc.name);
+    }
+
+    // Image (required)
+    if (!svc.image) {
+      errors.push(`${prefix}: Image is required`);
+    } else {
+      push(errors, prefix, validate.image(svc.image));
+    }
+
+    // Container name (optional)
+    push(errors, `${prefix} container_name`, validate.containerName(svc.container_name ?? ""));
+
+    // Hostname (optional)
+    push(errors, `${prefix} hostname`, validate.hostname(svc.hostname ?? ""));
+
+    // User (optional)
+    push(errors, `${prefix} user`, validate.user(svc.user ?? ""));
+
+    // Restart policy (optional)
+    push(errors, `${prefix} restart`, validate.restartPolicy(svc.restart ?? ""));
+
+    // Network mode (optional)
+    push(errors, `${prefix} network_mode`, validate.networkMode(svc.network_mode ?? ""));
+
+    // Stop signal / stop grace period (optional)
+    push(errors, `${prefix} stop_signal`, validate.stopSignal(svc.stop_signal ?? ""));
+    push(
+      errors,
+      `${prefix} stop_grace_period`,
+      validate.duration(svc.stop_grace_period ?? "")
+    );
+
+    // Ports
+    svc.ports.forEach((port, pIdx) => {
+      const portPrefix = `${prefix} port ${pIdx + 1}`;
+      push(errors, `${portPrefix} host`, validate.port(port.host));
+      push(errors, `${portPrefix} container`, validate.port(port.container));
+      // "none" is the UI sentinel for "unspecified protocol"; skip the enum check.
+      if (port.protocol && port.protocol !== "none") {
+        push(errors, `${portPrefix} protocol`, validate.protocol(port.protocol));
       }
     });
 
+    // Expose ports
+    svc.expose?.forEach((expose, eIdx) => {
+      push(errors, `${prefix} expose ${eIdx + 1}`, validate.port(expose));
+    });
+
+    // Volumes
+    svc.volumes?.forEach((vol, vIdx) => {
+      const vPrefix = `${prefix} volume ${vIdx + 1}`;
+      push(errors, `${vPrefix} host`, validate.volumeHostPath(vol.host));
+      if (!vol.container) {
+        errors.push(`${vPrefix}: Container path is required`);
+      }
+    });
+
+    // Environment
     svc.environment.forEach((env, eIdx) => {
       if (env.key) {
-        const keyError = validateEnvVarKey(env.key);
-        if (keyError)
-          errors.push(
-            `Service "${svc.name || idx + 1}" env var ${eIdx + 1}: ${keyError}`
-          );
+        push(errors, `${prefix} env var ${eIdx + 1}`, validate.envKey(env.key));
       }
     });
 
-    if (svc.deploy?.resources?.limits?.cpus) {
-      const cpuError = validateCpuValue(svc.deploy.resources.limits.cpus);
-      if (cpuError)
-        errors.push(`Service "${svc.name || idx + 1}" CPU limit: ${cpuError}`);
+    // DNS entries
+    svc.dns?.forEach((ip, dIdx) => {
+      push(errors, `${prefix} dns ${dIdx + 1}`, validate.ipAddress(ip));
+    });
+
+    // Extra hosts
+    svc.extra_hosts?.forEach((eh, hIdx) => {
+      push(errors, `${prefix} extra_hosts ${hIdx + 1}`, validate.extraHost(eh));
+    });
+
+    // Healthcheck durations
+    if (svc.healthcheck) {
+      const hc = svc.healthcheck;
+      push(errors, `${prefix} healthcheck.interval`, validate.duration(hc.interval ?? ""));
+      push(errors, `${prefix} healthcheck.timeout`, validate.duration(hc.timeout ?? ""));
+      push(errors, `${prefix} healthcheck.start_period`, validate.duration(hc.start_period ?? ""));
+      push(errors, `${prefix} healthcheck.start_interval`, validate.duration(hc.start_interval ?? ""));
+      if (hc.retries && !/^\d+$/.test(hc.retries)) {
+        errors.push(`${prefix} healthcheck.retries: must be a non-negative integer`);
+      }
     }
-    if (svc.deploy?.resources?.limits?.memory) {
-      const memError = validateMemoryValue(
-        svc.deploy.resources.limits.memory
-      );
-      if (memError)
-        errors.push(
-          `Service "${svc.name || idx + 1}" memory limit: ${memError}`
-        );
-    }
-    if (svc.deploy?.resources?.reservations?.cpus) {
-      const cpuError = validateCpuValue(
-        svc.deploy.resources.reservations.cpus
-      );
-      if (cpuError)
-        errors.push(
-          `Service "${svc.name || idx + 1}" CPU reservation: ${cpuError}`
-        );
-    }
-    if (svc.deploy?.resources?.reservations?.memory) {
-      const memError = validateMemoryValue(
-        svc.deploy.resources.reservations.memory
-      );
-      if (memError)
-        errors.push(
-          `Service "${svc.name || idx + 1}" memory reservation: ${memError}`
-        );
-    }
+
+    // Resources
+    push(errors, `${prefix} CPU limit`, validate.cpu(svc.deploy?.resources?.limits?.cpus ?? ""));
+    push(
+      errors,
+      `${prefix} memory limit`,
+      validate.memory(svc.deploy?.resources?.limits?.memory ?? "")
+    );
+    push(
+      errors,
+      `${prefix} CPU reservation`,
+      validate.cpu(svc.deploy?.resources?.reservations?.cpus ?? "")
+    );
+    push(
+      errors,
+      `${prefix} memory reservation`,
+      validate.memory(svc.deploy?.resources?.reservations?.memory ?? "")
+    );
   });
 
   return errors;
 }
+
+export function validateNetworks(networks: NetworkConfig[]): string[] {
+  const errors: string[] = [];
+  networks.forEach((net, idx) => {
+    const prefix = `Network "${net.name || idx + 1}"`;
+    if (!net.name) {
+      errors.push(`Network ${idx + 1}: Name is required`);
+    } else {
+      push(errors, prefix, validate.networkName(net.name));
+    }
+    if (net.driver) {
+      push(errors, `${prefix} driver`, validate.networkDriver(net.driver));
+    }
+    net.ipam?.config?.forEach((cfg, cIdx) => {
+      const c = `${prefix} ipam.config[${cIdx}]`;
+      if (cfg.subnet) push(errors, `${c} subnet`, validate.ipv4Cidr(cfg.subnet));
+      if (cfg.gateway) push(errors, `${c} gateway`, validate.ipv4(cfg.gateway));
+    });
+  });
+  return errors;
+}
+
+export function validateVolumes(volumes: VolumeConfig[]): string[] {
+  const errors: string[] = [];
+  volumes.forEach((vol, idx) => {
+    const prefix = `Volume "${vol.name || idx + 1}"`;
+    if (!vol.name) {
+      errors.push(`Volume ${idx + 1}: Name is required`);
+    } else {
+      push(errors, prefix, validate.volumeName(vol.name));
+    }
+    if (vol.driver) {
+      push(errors, `${prefix} driver`, validate.volumeDriver(vol.driver));
+    }
+  });
+  return errors;
+}
+
+// ---------- Redact (unchanged) ----------
 
 export function redactSensitiveData(yamlText: string): string {
   const sensitivePatterns = [

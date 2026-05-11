@@ -30,11 +30,44 @@ export interface TailscaleConfig {
   serveConfigPath: string;
 }
 
+export type NewtLogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL";
+
 export interface NewtConfig {
+  // Core (existing)
   endpoint: string;
   newtId: string;
   newtSecret: string;
   networkName: string;
+
+  // Pangolin Newt extras (see docs.pangolin.net/manage/sites/configure-site).
+  // Optional — empty string / false / 0 = "use Newt default".
+  name: string;
+  port: string;
+  mtu: string;
+  dns: string;
+  logLevel: NewtLogLevel;
+  interfaceName: string;
+  pingInterval: string;
+  pingTimeout: string;
+  configFile: string;
+  healthFile: string;
+  dockerSocket: string;
+  dockerEnforceNetworkValidation: boolean;
+  updown: string;
+  blueprintFile: string;
+  provisioningBlueprintFile: string;
+  provisioningKey: string;
+  noCloud: boolean;
+  disableClients: boolean;
+  metrics: boolean;
+  otlp: boolean;
+  metricsAdminAddr: string;
+  enforceHcCert: boolean;
+  tlsClientCertFile: string;
+  tlsClientKey: string;
+  tlsClientCa: string;
+  preferEndpoint: string;
+  region: string;
 }
 
 export interface CloudflaredConfig {

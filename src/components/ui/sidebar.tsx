@@ -5,6 +5,7 @@ import type { VariantProps } from "class-variance-authority";
 import { PanelLeftIcon } from "lucide-react";
 
 import { useIsMobile } from "../../hooks/use-mobile";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { Input } from "./input";
@@ -100,20 +101,24 @@ function SidebarProvider({
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
   }, [isMobile, setOpen, setOpenMobile]);
 
-  React.useEffect(() => {
+  // Subscribe to Ctrl/Cmd+B via useMountEffect (single mount, single teardown).
+  // The handler reads the latest `toggleSidebar` from a ref so we don't need
+  // the effect to re-subscribe on every render.
+  const toggleRef = React.useRef(toggleSidebar);
+  toggleRef.current = toggleSidebar;
+  useMountEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
         (event.metaKey || event.ctrlKey)
       ) {
         event.preventDefault();
-        toggleSidebar();
+        toggleRef.current();
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
+  });
 
   const state = open ? "expanded" : "collapsed";
 

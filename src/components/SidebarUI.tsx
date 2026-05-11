@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ChevronDown, Container, FileText, Clock } from "lucide-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
@@ -21,24 +20,9 @@ import {
 } from "./ui/collapsible";
 
 const items = [
-  {
-    title: "Compose Builder",
-    url: "/docker/compose-builder",
-    icon: Container,
-    group: "Docker",
-  },
-  {
-    title: "Config Builder",
-    url: "/config-builder",
-    icon: FileText,
-    group: "Builders",
-  },
-  {
-    title: "Scheduler Builder",
-    url: "/scheduler-builder",
-    icon: Clock,
-    group: "Builders",
-  },
+  { title: "Compose Builder", url: "/docker/compose-builder", icon: Container, group: "Docker" },
+  { title: "Config Builder", url: "/config-builder", icon: FileText, group: "Builders" },
+  { title: "Scheduler Builder", url: "/scheduler-builder", icon: Clock, group: "Builders" },
 ];
 
 const groupedItems = items.reduce<Record<string, typeof items>>((acc, item) => {
@@ -52,30 +36,19 @@ export function SidebarUI() {
   const router = useRouter();
   const location = router.state.location;
   const { toggleSidebar, state } = useSidebar();
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
-  // Initialize open groups based on current route
-  useEffect(() => {
-    const newOpenGroups = { ...openGroups };
-    let hasChanges = false;
-    Object.entries(groupedItems).forEach(([groupName, groupItems]) => {
-      if (groupItems.some((item) => location.pathname === item.url)) {
-        if (!newOpenGroups[groupName]) {
-          newOpenGroups[groupName] = true;
-          hasChanges = true;
-        }
-      }
-    });
-    if (hasChanges) {
-      setOpenGroups(newOpenGroups);
-    }
-  }, [location.pathname]);
+  // Track only explicit user overrides. Whether a group is open is derived from
+  // the current route + the user's last interaction — no effect needed.
+  const [userOverride, setUserOverride] = useState<Record<string, boolean>>({});
+
+  const isGroupActive = (groupItems: typeof items) =>
+    groupItems.some((item) => location.pathname === item.url);
 
   return (
     <>
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2">
-          <div 
+          <div
             onClick={toggleSidebar}
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground cursor-pointer hover:bg-sidebar-primary/90 transition-colors"
           >
@@ -86,21 +59,28 @@ export function SidebarUI() {
               <span className="font-semibold">Setup Tools</span>
               <span className="text-xs text-sidebar-foreground/70 truncate">v0.1.0</span>
             </div>
-            <span className="truncate text-xs text-sidebar-foreground/70">
-            </span>
+            <span className="truncate text-xs text-sidebar-foreground/70" />
           </div>
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         {Object.entries(groupedItems).map(([groupName, groupItems]) => {
-          const isOpen = state === "collapsed" ? true : (openGroups[groupName] || false);
+          const activeFromRoute = isGroupActive(groupItems);
+          const isOpen =
+            state === "collapsed"
+              ? true
+              : userOverride[groupName] !== undefined
+                ? userOverride[groupName]
+                : activeFromRoute;
 
           return (
             <Collapsible
               key={groupName}
               open={isOpen}
-              onOpenChange={(open) => setOpenGroups((prev) => ({ ...prev, [groupName]: open }))}
+              onOpenChange={(open) =>
+                setUserOverride((prev) => ({ ...prev, [groupName]: open }))
+              }
               className="group/collapsible"
             >
               <SidebarGroup>
@@ -117,16 +97,13 @@ export function SidebarUI() {
                     <SidebarMenu>
                       {groupItems.map((item) => {
                         const isActive = location.pathname === item.url;
-
                         return (
                           <SidebarMenuItem key={item.title}>
                             <SidebarMenuButton
                               tooltip={item.title}
                               isActive={isActive}
                               onClick={() => {
-                                if (!isActive) {
-                                  navigate({ to: item.url });
-                                }
+                                if (!isActive) navigate({ to: item.url });
                               }}
                             >
                               <item.icon className="h-4 w-4" />

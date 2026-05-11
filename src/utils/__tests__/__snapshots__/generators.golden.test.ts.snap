@@ -1,0 +1,861 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden / convertToDockerRun > docker run — caps-security-and-lifecycle 1`] = `
+"# tailscale-sidecar
+docker run --restart unless-stopped --security-opt no-new-privileges:true tailscale/tailscale:stable"
+`;
+
+exports[`golden / convertToDockerRun > docker run — env-dict-with-named-volume 1`] = `
+"# db
+docker run --restart unless-stopped -v pg-data:/var/lib/postgresql/data -v ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro -e POSTGRES_USER=app -e POSTGRES_PASSWORD=\${POSTGRES_PASSWORD} -e POSTGRES_DB=app postgres:16"
+`;
+
+exports[`golden / convertToDockerRun > docker run — healthcheck-and-deploy-resources 1`] = `
+"# api
+docker run --restart unless-stopped -p 8080:8080/tcp ghcr.io/example/api:1.0.0"
+`;
+
+exports[`golden / convertToDockerRun > docker run — minimal-single-service 1`] = `
+"# web
+docker run --restart unless-stopped nginx:latest"
+`;
+
+exports[`golden / convertToDockerRun > docker run — multi-service-with-deps-and-networks 1`] = `
+"# web
+docker run --restart unless-stopped -p 80:80/tcp --network frontend nginx:1.27-alpine
+
+# api
+docker run --restart unless-stopped -e DATABASE_URL=\${DATABASE_URL} --network frontend node:22-alpine
+
+# db
+docker run --restart unless-stopped -v pg-data:/var/lib/postgresql/data -e POSTGRES_USER=app -e POSTGRES_PASSWORD=\${POSTGRES_PASSWORD} --network backend postgres:16"
+`;
+
+exports[`golden / convertToDockerRun > docker run — ports-and-env-array 1`] = `
+"# api
+docker run --restart always -p 3000:3000/tcp -p 9229:9229/tcp -e NODE_ENV=production -e PORT=3000 -e DATABASE_URL=\${DATABASE_URL} node:22-alpine"
+`;
+
+exports[`golden / convertToDockerRun > docker run — vpn-cloudflared-tunnel 1`] = `
+"# app
+docker run --restart unless-stopped ghcr.io/example/app:latest"
+`;
+
+exports[`golden / convertToDockerRun > docker run — vpn-netbird-mesh 1`] = `
+"# agent
+docker run --restart unless-stopped ghcr.io/example/agent:latest"
+`;
+
+exports[`golden / convertToDockerRun > docker run — vpn-newt-tunnel 1`] = `
+"# app
+docker run --restart unless-stopped ghcr.io/example/app:latest"
+`;
+
+exports[`golden / convertToDockerRun > docker run — vpn-tailscale-attached 1`] = `
+"# web
+docker run --restart unless-stopped nginx:latest"
+`;
+
+exports[`golden / convertToDockerRun > docker run — vpn-wireguard-attached 1`] = `
+"# torrent
+docker run --restart unless-stopped linuxserver/qbittorrent:latest"
+`;
+
+exports[`golden / convertToDockerRun > docker run — vpn-zerotier-network 1`] = `
+"# node
+docker run --restart unless-stopped ghcr.io/example/node:latest"
+`;
+
+exports[`golden / convertToSystemd > systemd — caps-security-and-lifecycle 1`] = `
+"### tailscale-sidecar.service
+[Unit]
+Description=Docker Container tailscale-sidecar
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start tailscale-sidecar
+ExecStop=/usr/bin/docker stop tailscale-sidecar
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — env-dict-with-named-volume 1`] = `
+"### db.service
+[Unit]
+Description=Docker Container db
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start db
+ExecStop=/usr/bin/docker stop db
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — healthcheck-and-deploy-resources 1`] = `
+"### api.service
+[Unit]
+Description=Docker Container api
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start api
+ExecStop=/usr/bin/docker stop api
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — minimal-single-service 1`] = `
+"### web.service
+[Unit]
+Description=Docker Container web
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start web
+ExecStop=/usr/bin/docker stop web
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — multi-service-with-deps-and-networks 1`] = `
+"### web.service
+[Unit]
+Description=Docker Container web
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start web
+ExecStop=/usr/bin/docker stop web
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+
+### api.service
+[Unit]
+Description=Docker Container api
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start api
+ExecStop=/usr/bin/docker stop api
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+
+### db.service
+[Unit]
+Description=Docker Container db
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start db
+ExecStop=/usr/bin/docker stop db
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — ports-and-env-array 1`] = `
+"### api.service
+[Unit]
+Description=Docker Container api
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start api
+ExecStop=/usr/bin/docker stop api
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — vpn-cloudflared-tunnel 1`] = `
+"### app.service
+[Unit]
+Description=Docker Container app
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start app
+ExecStop=/usr/bin/docker stop app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — vpn-netbird-mesh 1`] = `
+"### agent.service
+[Unit]
+Description=Docker Container agent
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start agent
+ExecStop=/usr/bin/docker stop agent
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — vpn-newt-tunnel 1`] = `
+"### app.service
+[Unit]
+Description=Docker Container app
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start app
+ExecStop=/usr/bin/docker stop app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — vpn-tailscale-attached 1`] = `
+"### web.service
+[Unit]
+Description=Docker Container web
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start web
+ExecStop=/usr/bin/docker stop web
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — vpn-wireguard-attached 1`] = `
+"### torrent.service
+[Unit]
+Description=Docker Container torrent
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start torrent
+ExecStop=/usr/bin/docker stop torrent
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / convertToSystemd > systemd — vpn-zerotier-network 1`] = `
+"### node.service
+[Unit]
+Description=Docker Container node
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start node
+ExecStop=/usr/bin/docker stop node
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+`;
+
+exports[`golden / generateEnvFile > .env — caps-security-and-lifecycle 1`] = `""`;
+
+exports[`golden / generateEnvFile > .env — env-dict-with-named-volume 1`] = `"POSTGRES_PASSWORD="`;
+
+exports[`golden / generateEnvFile > .env — healthcheck-and-deploy-resources 1`] = `""`;
+
+exports[`golden / generateEnvFile > .env — minimal-single-service 1`] = `""`;
+
+exports[`golden / generateEnvFile > .env — multi-service-with-deps-and-networks 1`] = `
+"DATABASE_URL=
+POSTGRES_PASSWORD="
+`;
+
+exports[`golden / generateEnvFile > .env — ports-and-env-array 1`] = `"DATABASE_URL="`;
+
+exports[`golden / generateEnvFile > .env — vpn-cloudflared-tunnel 1`] = `"TUNNEL_TOKEN="`;
+
+exports[`golden / generateEnvFile > .env — vpn-netbird-mesh 1`] = `"NETBIRD_SETUP_KEY="`;
+
+exports[`golden / generateEnvFile > .env — vpn-newt-tunnel 1`] = `
+"NEWT_ID=
+NEWT_SECRET="
+`;
+
+exports[`golden / generateEnvFile > .env — vpn-tailscale-attached 1`] = `"TS_AUTHKEY="`;
+
+exports[`golden / generateEnvFile > .env — vpn-wireguard-attached 1`] = `""`;
+
+exports[`golden / generateEnvFile > .env — vpn-zerotier-network 1`] = `"ZT_NETWORK_ID="`;
+
+exports[`golden / generateKomodoToml > komodo TOML — caps-security-and-lifecycle 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[tailscale-sidecar]
+image = "tailscale/tailscale:stable"
+restart = "unless-stopped"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — env-dict-with-named-volume 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[db]
+image = "postgres:16"
+restart = "unless-stopped"
+volumes = [
+  "pg-data:/var/lib/postgresql/data",
+  "./init.sql:/docker-entrypoint-initdb.d/init.sql:ro",
+]
+environment = {}
+environment.POSTGRES_USER = "app"
+environment.POSTGRES_PASSWORD = "\${POSTGRES_PASSWORD}"
+environment.POSTGRES_DB = "app"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — healthcheck-and-deploy-resources 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[api]
+image = "ghcr.io/example/api:1.0.0"
+restart = "unless-stopped"
+ports = [
+  "8080:8080/tcp",
+]
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — minimal-single-service 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[web]
+image = "nginx:latest"
+restart = "unless-stopped"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — multi-service-with-deps-and-networks 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[web]
+image = "nginx:1.27-alpine"
+restart = "unless-stopped"
+ports = [
+  "80:80/tcp",
+]
+
+[api]
+image = "node:22-alpine"
+restart = "unless-stopped"
+environment = [
+  "DATABASE_URL=\${DATABASE_URL}",
+]
+
+[db]
+image = "postgres:16"
+restart = "unless-stopped"
+volumes = [
+  "pg-data:/var/lib/postgresql/data",
+]
+environment = [
+  "POSTGRES_USER=app",
+  "POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}",
+]
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — ports-and-env-array 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[api]
+image = "node:22-alpine"
+restart = "always"
+ports = [
+  "3000:3000/tcp",
+  "9229:9229/tcp",
+]
+environment = [
+  "NODE_ENV=production",
+  "PORT=3000",
+  "DATABASE_URL=\${DATABASE_URL}",
+]
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — vpn-cloudflared-tunnel 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[app]
+image = "ghcr.io/example/app:latest"
+restart = "unless-stopped"
+
+[cloudflared]
+image = "cloudflare/cloudflared"
+restart = "always"
+environment = {}
+environment.TUNNEL_TOKEN = "\${TUNNEL_TOKEN}"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — vpn-netbird-mesh 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[agent]
+image = "ghcr.io/example/agent:latest"
+restart = "unless-stopped"
+
+[netbird]
+image = "netbirdio/netbird:latest"
+restart = "always"
+environment = {}
+environment.NETBIRD_SETUP_KEY = "\${NETBIRD_SETUP_KEY}"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — vpn-newt-tunnel 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[app]
+image = "ghcr.io/example/app:latest"
+restart = "unless-stopped"
+
+[newt]
+image = "fosrl/newt"
+container_name = "newt"
+restart = "always"
+environment = {}
+environment.PANGOLIN_ENDPOINT = "https://app.pangolin.net"
+environment.NEWT_ID = "\${NEWT_ID}"
+environment.NEWT_SECRET = "\${NEWT_SECRET}"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — vpn-tailscale-attached 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[web]
+image = "nginx:latest"
+restart = "unless-stopped"
+
+[tailscale]
+image = "tailscale/tailscale:latest"
+restart = "always"
+volumes = [
+  "tailscale:/var/lib/tailscale",
+  "/dev/net/tun:/dev/net/tun",
+]
+environment = {}
+environment.TS_STATE_DIR = "/var/lib/tailscale"
+environment.TS_ACCEPT_DNS = "false"
+environment.TS_AUTH_ONCE = "true"
+environment.TS_USERSPACE = "false"
+environment.TS_AUTHKEY = "$TS_AUTHKEY"
+environment.TS_HOSTNAME = "edge"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — vpn-wireguard-attached 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[torrent]
+image = "linuxserver/qbittorrent:latest"
+restart = "unless-stopped"
+
+[wireguard]
+image = "linuxserver/wireguard:latest"
+restart = "always"
+volumes = [
+  "/etc/wireguard/wg0.conf:/config",
+]
+environment = {}
+environment.PUID = "1000"
+environment.PGID = "1000"
+environment.TZ = "Etc/UTC"
+
+"
+`;
+
+exports[`golden / generateKomodoToml > komodo TOML — vpn-zerotier-network 1`] = `
+"# Komodo configuration generated from Portainer stack
+# Generated from Docker Compose configuration
+
+[node]
+image = "ghcr.io/example/node:latest"
+restart = "unless-stopped"
+
+[zerotier]
+image = "zerotier/zerotier:latest"
+restart = "always"
+volumes = [
+  "/var/lib/zerotier-one:/var/lib/zerotier-one",
+]
+environment = {}
+environment.ZT_NC_NETWORK = "\${ZT_NETWORK_ID}"
+
+"
+`;
+
+exports[`golden / generateYaml > compose YAML — caps-security-and-lifecycle 1`] = `
+"services:
+  tailscale-sidecar:
+    image: "tailscale/tailscale:stable"
+    restart: unless-stopped
+    privileged: false
+    read_only: false
+    security_opt: 
+      - no-new-privileges:true
+    cap_add: 
+      - NET_ADMIN
+      - NET_RAW
+    cap_drop: 
+      - ALL
+    sysctls:
+      net.ipv4.ip_forward: 1
+    devices: 
+      - /dev/net/tun:/dev/net/tun
+    tmpfs: 
+      - /tmp
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    init: true
+    stop_grace_period: "10s"
+    stop_signal: SIGTERM
+    tty: true
+    stdin_open: true
+    hostname: ts-host"
+`;
+
+exports[`golden / generateYaml > compose YAML — env-dict-with-named-volume 1`] = `
+"services:
+  db:
+    image: "postgres:16"
+    restart: unless-stopped
+    volumes: 
+      - pg-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: "\${POSTGRES_PASSWORD}"
+      POSTGRES_DB: app
+volumes:
+  pg-data:
+    driver: local"
+`;
+
+exports[`golden / generateYaml > compose YAML — healthcheck-and-deploy-resources 1`] = `
+"services:
+  api:
+    image: "ghcr.io/example/api:1.0.0"
+    restart: unless-stopped
+    ports: 
+      - 8080:8080/tcp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health", "||", "exit", "1"]
+      interval: "30s"
+      timeout: "5s"
+      retries: 3
+      start_period: "10s"
+      start_interval: "5s"
+    labels: 
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(\`api.example.com\`)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+        reservations:
+          cpus: "0.25"
+          memory: "128M""
+`;
+
+exports[`golden / generateYaml > compose YAML — minimal-single-service 1`] = `
+"services:
+  web:
+    image: "nginx:latest"
+    restart: unless-stopped"
+`;
+
+exports[`golden / generateYaml > compose YAML — multi-service-with-deps-and-networks 1`] = `
+"services:
+  web:
+    image: "nginx:1.27-alpine"
+    restart: unless-stopped
+    ports: 
+      - 80:80/tcp
+    depends_on: 
+      - api
+    networks: 
+      - frontend
+  api:
+    image: "node:22-alpine"
+    restart: unless-stopped
+    environment: 
+      - DATABASE_URL=\${DATABASE_URL}
+    depends_on: 
+      - db
+    networks: 
+      - frontend
+      - backend
+  db:
+    image: "postgres:16"
+    restart: unless-stopped
+    volumes: 
+      - pg-data:/var/lib/postgresql/data
+    environment: 
+      - POSTGRES_USER=app
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    networks: 
+      - backend
+networks:
+  frontend:
+    driver: bridge
+    attachable: false
+    internal: false
+    enable_ipv6: false
+  backend:
+    driver: bridge
+    attachable: false
+    internal: true
+    enable_ipv6: false
+volumes:
+  pg-data:
+    driver: local"
+`;
+
+exports[`golden / generateYaml > compose YAML — ports-and-env-array 1`] = `
+"services:
+  api:
+    image: "node:22-alpine"
+    restart: always
+    ports: 
+      - 3000:3000/tcp
+      - 9229:9229/tcp
+    environment: 
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=\${DATABASE_URL}"
+`;
+
+exports[`golden / generateYaml > compose YAML — vpn-cloudflared-tunnel 1`] = `
+"services:
+  app:
+    image: "ghcr.io/example/app:latest"
+    restart: unless-stopped
+
+# cloudflared VPN Sidecar Configuration
+  cloudflared:
+    restart: always
+    image: cloudflare/cloudflared
+    command: "--no-autoupdate tunnel run"
+    environment:
+      TUNNEL_TOKEN: "\${TUNNEL_TOKEN}""
+`;
+
+exports[`golden / generateYaml > compose YAML — vpn-netbird-mesh 1`] = `
+"services:
+  agent:
+    image: "ghcr.io/example/agent:latest"
+    restart: unless-stopped
+
+# netbird VPN Sidecar Configuration
+  netbird:
+    restart: always
+    image: "netbirdio/netbird:latest"
+    privileged: true
+    cap_add: 
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls: 
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    environment:
+      NETBIRD_SETUP_KEY: "\${NETBIRD_SETUP_KEY}""
+`;
+
+exports[`golden / generateYaml > compose YAML — vpn-newt-tunnel 1`] = `
+"services:
+  app:
+    image: "ghcr.io/example/app:latest"
+    restart: unless-stopped
+    networks: 
+      - newt
+  newt:
+    restart: always
+    image: fosrl/newt
+    container_name: newt
+    environment:
+      PANGOLIN_ENDPOINT: "https://app.pangolin.net"
+      NEWT_ID: "\${NEWT_ID}"
+      NEWT_SECRET: "\${NEWT_SECRET}"
+    networks: 
+      - newt
+networks:
+  newt:
+    external:
+      name: newt"
+`;
+
+exports[`golden / generateYaml > compose YAML — vpn-tailscale-attached 1`] = `
+"services:
+  web:
+    image: "nginx:latest"
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+
+# tailscale VPN Sidecar Configuration
+# Routes traffic through Tailscale VPN
+# Hostname: edge
+  tailscale:
+    restart: always
+    image: "tailscale/tailscale:latest"
+    privileged: true
+    volumes: 
+      - tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_ACCEPT_DNS: false
+      TS_AUTH_ONCE: true
+      TS_USERSPACE: false
+      TS_AUTHKEY: $TS_AUTHKEY
+      TS_HOSTNAME: edge
+volumes:
+  tailscale:"
+`;
+
+exports[`golden / generateYaml > compose YAML — vpn-wireguard-attached 1`] = `
+"services:
+  torrent:
+    image: "linuxserver/qbittorrent:latest"
+    restart: unless-stopped
+
+# wireguard VPN Sidecar Configuration
+  wireguard:
+    restart: always
+    image: "linuxserver/wireguard:latest"
+    cap_add: 
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+    sysctls: 
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes: 
+      - /etc/wireguard/wg0.conf:/config"
+`;
+
+exports[`golden / generateYaml > compose YAML — vpn-zerotier-network 1`] = `
+"services:
+  node:
+    image: "ghcr.io/example/node:latest"
+    restart: unless-stopped
+
+# zerotier VPN Sidecar Configuration
+  zerotier:
+    restart: always
+    image: "zerotier/zerotier:latest"
+    privileged: true
+    networks: 
+      - host
+    volumes: 
+      - /var/lib/zerotier-one:/var/lib/zerotier-one
+    environment:
+      ZT_NC_NETWORK: "\${ZT_NETWORK_ID}""
+`;

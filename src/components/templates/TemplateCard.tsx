@@ -1,6 +1,4 @@
-import { Settings } from "lucide-react";
-import { Card, CardContent } from "../ui/card";
-import { Button } from "../ui/button";
+import { Settings, Plus } from "lucide-react";
 
 export interface TemplateCardProps {
   id: string;
@@ -10,6 +8,31 @@ export interface TemplateCardProps {
   logo?: string;
   tags?: string[];
   onClick: () => void;
+  onQuickAdd?: () => void;
+}
+
+// Pick a deterministic logo background tint per template name (no random per render).
+// All values are token references — no hex literals.
+const LOGO_TINTS = [
+  "var(--coral)",
+  "var(--teal)",
+  "var(--amber)",
+  "var(--slate)",
+  "var(--violet)",
+];
+
+function tintFor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return LOGO_TINTS[h % LOGO_TINTS.length];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+|[-_]/).filter(Boolean);
+  if (!parts.length) return "?";
+  const a = parts[0]?.[0] ?? "";
+  const b = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (a + b).toUpperCase().slice(0, 2);
 }
 
 export function TemplateCard({
@@ -19,79 +42,86 @@ export function TemplateCard({
   logo,
   tags,
   onClick,
+  onQuickAdd,
 }: TemplateCardProps) {
   return (
-    <Card
-      className="group cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-primary/50 flex flex-col w-full h-full bg-card/50 hover:bg-card border-border/50"
-      onClick={onClick}
-    >
-      <CardContent className="p-5 flex flex-col gap-4 flex-1 min-h-0">
-        {/* Header with logo and name */}
-        <div className="flex items-start gap-4">
-          {logo ? (
-            <img
-              src={logo}
-              alt={name}
-              className="w-12 h-12 object-contain flex-shrink-0 rounded-lg bg-background/50 p-1"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          ) : (
-            <div className="w-12 h-12 bg-muted/50 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Settings className="w-6 h-6 text-muted-foreground" />
-            </div>
-          )}
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="font-bold text-lg leading-tight break-words tracking-tight">
-                {name}
-              </h3>
-            </div>
-            {version && (
-              <p className="text-xs text-muted-foreground font-mono">
-                {version}
-              </p>
-            )}
+    <article className="tpl-card" onClick={onClick}>
+      <header className="tpl-head">
+        {logo ? (
+          <img
+            src={logo}
+            alt={name}
+            className="tpl-logo"
+            // Logo image needs a background fallback colour computed per name.
+            // The values come from CSS variables — no hex baked into JSX.
+            // eslint-disable-next-line no-restricted-syntax
+            style={{ background: tintFor(name) }} // check-no-magic-css-allow
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = "none";
+            }}
+          />
+        ) : (
+          <div
+            className="tpl-logo"
+            // eslint-disable-next-line no-restricted-syntax
+            style={{ background: tintFor(name) }} // check-no-magic-css-allow
+            aria-hidden
+          >
+            {initials(name) || <Settings size={18} />}
           </div>
-        </div>
-
-        {/* Description */}
-        {description && (
-          <p className="text-sm text-muted-foreground line-clamp-3 flex-1 leading-relaxed">
-            {description}
-          </p>
         )}
 
-        {/* Tags */}
-        <div className="mt-auto space-y-4">
-          {tags && tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-red-500/10 text-red-400 rounded border border-red-500/20"
-                >
+        <div className="tpl-headtext">
+          <div className="tpl-name">{name}</div>
+          {version && <div className="tpl-version">{version}</div>}
+        </div>
+
+        {onQuickAdd && (
+          <button
+            type="button"
+            className="tpl-add"
+            onClick={(e) => {
+              e.stopPropagation();
+              onQuickAdd();
+            }}
+            title="Quick add to compose"
+            aria-label="Quick add to compose"
+          >
+            <Plus size={16} />
+          </button>
+        )}
+      </header>
+
+      {description && <p className="tpl-blurb">{description}</p>}
+
+      <footer className="tpl-foot">
+        <div className="tpl-tags">
+          {tags && tags.length > 0
+            ? tags.slice(0, 3).map((tag) => (
+                <span key={tag} className="tpl-tag">
                   {tag}
                 </span>
-              ))}
-              {tags.length > 3 && (
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-muted text-muted-foreground rounded border border-border">
-                  +{tags.length - 3}
-                </span>
-              )}
-            </div>
+              ))
+            : null}
+          {tags && tags.length > 3 && (
+            <span className="tpl-tag muted">+{tags.length - 3}</span>
           )}
-
-          <Button 
-            variant="secondary" 
-            className="w-full bg-secondary/50 hover:bg-secondary group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
-            size="sm"
-          >
-            View Details
-          </Button>
         </div>
-      </CardContent>
-    </Card>
+        <button
+          type="button"
+          className="btn btn-text-link tpl-details"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+        >
+          Details
+          <span className="arr" aria-hidden>
+            →
+          </span>
+        </button>
+      </footer>
+    </article>
   );
 }

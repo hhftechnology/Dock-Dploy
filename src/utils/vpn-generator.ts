@@ -62,7 +62,8 @@ export function generateVpnService(vpnConfig: VPNConfig | undefined): any {
   if (!vpnConfig || !vpnConfig.enabled || !vpnConfig.type) return null;
 
   const serviceName = getVpnServiceName(vpnConfig.type);
-  let service: any = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service: any = {
     restart: "always",
   };
 

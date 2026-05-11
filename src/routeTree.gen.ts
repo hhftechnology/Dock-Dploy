@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SchedulerBuilderRouteImport } from './routes/scheduler-builder'
 import { Route as ConfigBuilderRouteImport } from './routes/config-builder'
+import { Route as BlueprintBuilderRouteImport } from './routes/blueprint-builder'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DockerComposeBuilderRouteImport } from './routes/docker/compose-builder'
@@ -23,6 +24,11 @@ const SchedulerBuilderRoute = SchedulerBuilderRouteImport.update({
 const ConfigBuilderRoute = ConfigBuilderRouteImport.update({
   id: '/config-builder',
   path: '/config-builder',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlueprintBuilderRoute = BlueprintBuilderRouteImport.update({
+  id: '/blueprint-builder',
+  path: '/blueprint-builder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SplatRoute = SplatRouteImport.update({
@@ -44,6 +50,7 @@ const DockerComposeBuilderRoute = DockerComposeBuilderRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/blueprint-builder': typeof BlueprintBuilderRoute
   '/config-builder': typeof ConfigBuilderRoute
   '/scheduler-builder': typeof SchedulerBuilderRoute
   '/docker/compose-builder': typeof DockerComposeBuilderRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/blueprint-builder': typeof BlueprintBuilderRoute
   '/config-builder': typeof ConfigBuilderRoute
   '/scheduler-builder': typeof SchedulerBuilderRoute
   '/docker/compose-builder': typeof DockerComposeBuilderRoute
@@ -59,6 +67,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/blueprint-builder': typeof BlueprintBuilderRoute
   '/config-builder': typeof ConfigBuilderRoute
   '/scheduler-builder': typeof SchedulerBuilderRoute
   '/docker/compose-builder': typeof DockerComposeBuilderRoute
@@ -68,6 +77,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$'
+    | '/blueprint-builder'
     | '/config-builder'
     | '/scheduler-builder'
     | '/docker/compose-builder'
@@ -75,6 +85,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/$'
+    | '/blueprint-builder'
     | '/config-builder'
     | '/scheduler-builder'
     | '/docker/compose-builder'
@@ -82,6 +93,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$'
+    | '/blueprint-builder'
     | '/config-builder'
     | '/scheduler-builder'
     | '/docker/compose-builder'
@@ -90,6 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
+  BlueprintBuilderRoute: typeof BlueprintBuilderRoute
   ConfigBuilderRoute: typeof ConfigBuilderRoute
   SchedulerBuilderRoute: typeof SchedulerBuilderRoute
   DockerComposeBuilderRoute: typeof DockerComposeBuilderRoute
@@ -109,6 +122,13 @@ declare module '@tanstack/react-router' {
       path: '/config-builder'
       fullPath: '/config-builder'
       preLoaderRoute: typeof ConfigBuilderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blueprint-builder': {
+      id: '/blueprint-builder'
+      path: '/blueprint-builder'
+      fullPath: '/blueprint-builder'
+      preLoaderRoute: typeof BlueprintBuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$': {
@@ -138,6 +158,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
+  BlueprintBuilderRoute: BlueprintBuilderRoute,
   ConfigBuilderRoute: ConfigBuilderRoute,
   SchedulerBuilderRoute: SchedulerBuilderRoute,
   DockerComposeBuilderRoute: DockerComposeBuilderRoute,

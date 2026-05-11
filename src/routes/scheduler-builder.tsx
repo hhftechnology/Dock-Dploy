@@ -1,33 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { CodeEditor } from "../components/CodeEditor";
-import { SidebarUI } from "../components/SidebarUI";
-import { Card } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Separator } from "../components/ui/separator";
-import {
-  SidebarProvider,
-  Sidebar,
-  SidebarInset,
-  SidebarTrigger,
-} from "../components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "../components/ui/dropdown-menu";
-import { Textarea } from "../components/ui/textarea";
-import { Download, Copy, Settings } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+
+import { SetupSidebar, type BuilderView } from "../components/SetupSidebar";
+import { Field } from "../components/compose-builder/ServiceForm/Field";
 
 export const Route = createFileRoute("/scheduler-builder")({
-  component: App,
+  component: SchedulerBuilderRoute,
 });
 
+type ScheduleType = "cron" | "github-actions" | "systemd-timer";
+
 interface ScheduleConfig {
-  type: "cron" | "github-actions" | "systemd-timer";
+  type: ScheduleType;
   name: string;
   schedule: string;
   command: string;
@@ -37,8 +21,9 @@ interface ScheduleConfig {
   workingDir?: string;
 }
 
-function App() {
-  const [scheduleType, setScheduleType] = useState<"cron" | "github-actions" | "systemd-timer">("cron");
+function SchedulerBuilderRoute() {
+  const navigate = useNavigate();
+  const [scheduleType, setScheduleType] = useState<ScheduleType>("cron");
   const [config, setConfig] = useState<ScheduleConfig>({
     type: "cron",
     name: "",
@@ -49,18 +34,18 @@ function App() {
     user: "",
     workingDir: "",
   });
-  const [output, setOutput] = useState("");
+  const effectiveConfig: ScheduleConfig = { ...config, type: scheduleType };
 
-  const generateCron = useCallback((config: ScheduleConfig): string => {
-    const user = config.user || "root";
-    const workingDir = config.workingDir ? `cd ${config.workingDir} && ` : "";
-    const command = `${workingDir}${config.command}`;
-    return `${config.schedule} ${user} ${command}`;
+  const generateCron = useCallback((cfg: ScheduleConfig): string => {
+    const user = cfg.user || "root";
+    const workingDir = cfg.workingDir ? `cd ${cfg.workingDir} && ` : "";
+    const command = `${workingDir}${cfg.command}`;
+    return `${cfg.schedule} ${user} ${command}`;
   }, []);
 
-  const generateGitHubActions = useCallback((config: ScheduleConfig): string => {
-    const cronSchedule = config.schedule.split(" ").slice(0, 5).join(" ");
-    return `name: ${config.name || "Scheduled Task"}
+  const generateGitHubActions = useCallback((cfg: ScheduleConfig): string => {
+    const cronSchedule = cfg.schedule.split(" ").slice(0, 5).join(" ");
+    return `name: ${cfg.name || "Scheduled Task"}
 
 on:
   schedule:
@@ -70,34 +55,30 @@ jobs:
   scheduled:
     runs-on: ubuntu-latest
     steps:
-      - name: Run scheduled task
-        run: |
-          ${config.command}
+      - name: ${cfg.description || "Run command"}
+        run: ${cfg.command}
 `;
   }, []);
 
-  const generateSystemdTimer = useCallback((config: ScheduleConfig): string => {
-    const serviceName = config.name.replace(/[^a-zA-Z0-9]/g, "-");
+  const generateSystemdTimer = useCallback((cfg: ScheduleConfig): string => {
+    const serviceName = (cfg.name || "task").replace(/[^a-zA-Z0-9]/g, "-");
     const timerName = `${serviceName}.timer`;
     const serviceFileName = `${serviceName}.service`;
-
-    // Parse cron schedule to OnCalendar format
-    const cronParts = config.schedule.split(" ");
-    let onCalendar = "";
+    const cronParts = cfg.schedule.split(" ");
+    let onCalendar: string;
     if (cronParts.length >= 5) {
       const [minute, hour, day, _month, weekday] = cronParts;
-      onCalendar = `OnCalendar=`;
       if (weekday !== "*") {
-        onCalendar += `*-*-* ${hour}:${minute}:00`;
+        onCalendar = `OnCalendar=*-*-* ${hour}:${minute}:00`;
       } else {
-        onCalendar += `*-*-${day} ${hour}:${minute}:00`;
+        onCalendar = `OnCalendar=*-*-${day} ${hour}:${minute}:00`;
       }
     } else {
-      onCalendar = `OnCalendar=${config.schedule}`;
+      onCalendar = `OnCalendar=${cfg.schedule}`;
     }
 
     const timerUnit = `[Unit]
-Description=Timer for ${config.name}
+Description=Timer for ${cfg.name}
 Requires=${serviceFileName}
 
 [Timer]
@@ -109,12 +90,12 @@ WantedBy=timers.target
 `;
 
     const serviceUnit = `[Unit]
-Description=${config.description || config.name}
+Description=${cfg.description || cfg.name}
 After=network.target
 
 [Service]
 Type=oneshot
-${config.user ? `User=${config.user}\n` : ""}${config.workingDir ? `WorkingDirectory=${config.workingDir}\n` : ""}ExecStart=/bin/bash -c '${config.command}'
+${cfg.user ? `User=${cfg.user}\n` : ""}${cfg.workingDir ? `WorkingDirectory=${cfg.workingDir}\n` : ""}ExecStart=/bin/bash -c '${cfg.command}'
 `;
 
     return `# ${timerName}
@@ -122,263 +103,222 @@ ${timerUnit}
 
 # ${serviceFileName}
 ${serviceUnit}
-
-# Installation:
-# 1. Save ${timerName} to /etc/systemd/system/
-# 2. Save ${serviceFileName} to /etc/systemd/system/
-# 3. Run: sudo systemctl daemon-reload
-# 4. Run: sudo systemctl enable --now ${timerName}
 `;
   }, []);
 
-  const updateOutput = useCallback(() => {
-    let result = "";
+  const output = useMemo(() => {
     switch (scheduleType) {
       case "cron":
-        result = generateCron(config);
-        break;
+        return generateCron(effectiveConfig);
       case "github-actions":
-        result = generateGitHubActions(config);
-        break;
+        return generateGitHubActions(effectiveConfig);
       case "systemd-timer":
-        result = generateSystemdTimer(config);
-        break;
+        return generateSystemdTimer(effectiveConfig);
+      default:
+        return "";
     }
-    setOutput(result);
-  }, [scheduleType, config, generateCron, generateGitHubActions, generateSystemdTimer]);
+  }, [
+    scheduleType,
+    effectiveConfig,
+    generateCron,
+    generateGitHubActions,
+    generateSystemdTimer,
+  ]);
 
-  useEffect(() => {
-    setConfig((prev) => ({ ...prev, type: scheduleType }));
-  }, [scheduleType]);
-
-  useEffect(() => {
-    updateOutput();
-  }, [updateOutput]);
-
-  const copyToClipboard = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error("Failed to copy to clipboard:", error);
-    }
-  }, []);
-
-  const downloadFile = useCallback((content: string, filename: string, mimeType: string) => {
-    try {
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to download file:", error);
-    }
-  }, []);
-
-  const getFilename = useCallback((): string => {
+  const filename = useMemo(() => {
     switch (scheduleType) {
       case "cron":
-        return "crontab.txt";
+        return "crontab";
       case "github-actions":
         return ".github/workflows/schedule.yml";
       case "systemd-timer":
-        return `${config.name.replace(/[^a-zA-Z0-9]/g, "-")}.timer`;
+        return `${(config.name || "task").replace(/[^a-zA-Z0-9]/g, "-")}.timer`;
       default:
         return "schedule.txt";
     }
   }, [scheduleType, config.name]);
 
+  const handleNav = (view: BuilderView) => {
+    if (view === "compose") navigate({ to: "/docker/compose-builder" });
+    else if (view === "config") navigate({ to: "/config-builder" });
+    else if (view === "blueprint") navigate({ to: "/blueprint-builder" });
+  };
+
   return (
-    <SidebarProvider defaultOpen={true}>
-        <Sidebar collapsible="icon">
-          <SidebarUI />
-        </Sidebar>
-        <SidebarInset>
-          <div className="flex items-center gap-2 p-2 border-b">
-            <SidebarTrigger />
-            <h1 className="text-xl font-bold">Scheduler Builder</h1>
+    <div className="builder-shell builder-shell--three">
+      <SetupSidebar view="scheduler" onNav={handleNav} />
+
+      <section className="config-col">
+        <div className="col-head">
+          <h2 className="col-head-title">
+            <span className="col-bar" aria-hidden />
+            Schedule Type
+          </h2>
+        </div>
+
+        <div className="config-tabs">
+          <button
+            type="button"
+            className={
+              "config-tab" + (scheduleType === "cron" ? " active" : "")
+            }
+            onClick={() => setScheduleType("cron")}
+          >
+            Cron
+          </button>
+          <button
+            type="button"
+            className={
+              "config-tab" +
+              (scheduleType === "github-actions" ? " active" : "")
+            }
+            onClick={() => setScheduleType("github-actions")}
+          >
+            GitHub Actions
+          </button>
+          <button
+            type="button"
+            className={
+              "config-tab" +
+              (scheduleType === "systemd-timer" ? " active" : "")
+            }
+            onClick={() => setScheduleType("systemd-timer")}
+          >
+            systemd
+          </button>
+        </div>
+
+        <div className="config-tab-body">
+          <div className="tab-content">
+            <p className="tab-hint">
+              {scheduleType === "cron" &&
+                "Generate a /etc/cron.d-friendly line with optional user and working dir."}
+              {scheduleType === "github-actions" &&
+                "Emit a workflow file with a cron schedule trigger."}
+              {scheduleType === "systemd-timer" &&
+                "Produce a paired .timer + .service systemd unit."}
+            </p>
+            <div className="tab-empty">
+              <h3 className="tab-empty-title">Schedule preview</h3>
+              <p className="tab-empty-sub">
+                {effectiveConfig.schedule || "(no cron set)"}
+              </p>
+            </div>
           </div>
-          <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card className="p-4">
-              <div className="mb-4">
-                <Label className="mb-2 block">Scheduler Type</Label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      {scheduleType === "cron" && "Cron"}
-                      {scheduleType === "github-actions" && "GitHub Actions"}
-                      {scheduleType === "systemd-timer" && "Systemd Timer"}
-                      <Settings className="ml-2 h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => setScheduleType("cron")}>
-                      Cron
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setScheduleType("github-actions")}>
-                      GitHub Actions
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setScheduleType("systemd-timer")}>
-                      Systemd Timer
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+        </div>
+      </section>
 
-              <Separator className="my-4" />
+      {/* Form column */}
+      <section className="service-col">
+        <div className="col-head">
+          <h2 className="col-head-title">
+            <span className="col-bar" aria-hidden />
+            Task Configuration
+          </h2>
+        </div>
+        <div className="svc-tab">
+          <Field label="Name" required>
+            <input
+              className="input"
+              value={config.name}
+              onChange={(e) => setConfig({ ...config, name: e.target.value })}
+              placeholder="nightly-backup"
+            />
+          </Field>
 
-              <div className="space-y-4">
-                <div>
-                  <Label className="mb-1 block">Name</Label>
-                  <Input
-                    value={config.name}
-                    onChange={(e) =>
-                      setConfig({ ...config, name: e.target.value })
-                    }
-                    placeholder="Task name"
-                  />
-                </div>
+          <Field
+            label="Schedule"
+            hint='Cron format: "minute hour day month weekday" — e.g. "0 0 * * *"'
+            required
+          >
+            <input
+              className="input"
+              value={config.schedule}
+              onChange={(e) =>
+                setConfig({ ...config, schedule: e.target.value })
+              }
+              placeholder="0 0 * * *"
+            />
+          </Field>
 
-                <div>
-                  <Label className="mb-1 block">
-                    Schedule {scheduleType === "cron" && "(Cron format: minute hour day month weekday)"}
-                    {scheduleType === "github-actions" && "(Cron format: minute hour day month weekday)"}
-                    {scheduleType === "systemd-timer" && "(Cron format or systemd OnCalendar)"}
-                  </Label>
-                  <Input
-                    value={config.schedule}
-                    onChange={(e) =>
-                      setConfig({ ...config, schedule: e.target.value })
-                    }
-                    placeholder={
-                      scheduleType === "cron" || scheduleType === "github-actions"
-                        ? "0 0 * * * (daily at midnight)"
-                        : "0 0 * * * or *-*-* 00:00:00"
-                    }
-                  />
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Examples: "0 0 * * *" (daily), "0 */6 * * *" (every 6 hours), "0 0 1 * *" (monthly)
-                  </div>
-                </div>
+          <Field label="Command" required>
+            <textarea
+              className="input"
+              rows={4}
+              value={config.command}
+              onChange={(e) =>
+                setConfig({ ...config, command: e.target.value })
+              }
+              placeholder="/usr/local/bin/backup.sh"
+            />
+          </Field>
 
-                <div>
-                  <Label className="mb-1 block">Command</Label>
-                  <Textarea
-                    value={config.command}
-                    onChange={(e) =>
-                      setConfig({ ...config, command: e.target.value })
-                    }
-                    placeholder="Command to execute"
-                    className="font-mono"
-                    rows={4}
-                  />
-                </div>
+          <Field label="Description">
+            <input
+              className="input"
+              value={config.description || ""}
+              onChange={(e) =>
+                setConfig({ ...config, description: e.target.value })
+              }
+              placeholder="What does this task do?"
+            />
+          </Field>
 
-                <div>
-                  <Label className="mb-1 block">Description (optional)</Label>
-                  <Input
-                    value={config.description || ""}
-                    onChange={(e) =>
-                      setConfig({ ...config, description: e.target.value })
-                    }
-                    placeholder="Task description"
-                  />
-                </div>
+          {(scheduleType === "cron" || scheduleType === "systemd-timer") && (
+            <div className="svc-grid-2">
+              <Field label="User">
+                <input
+                  className="input"
+                  value={config.user || ""}
+                  onChange={(e) =>
+                    setConfig({ ...config, user: e.target.value })
+                  }
+                  placeholder="root"
+                />
+              </Field>
+              <Field label="Working directory">
+                <input
+                  className="input"
+                  value={config.workingDir || ""}
+                  onChange={(e) =>
+                    setConfig({ ...config, workingDir: e.target.value })
+                  }
+                  placeholder="/srv/app"
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+      </section>
 
-                {scheduleType === "cron" && (
-                  <>
-                    <div>
-                      <Label className="mb-1 block">User (optional)</Label>
-                      <Input
-                        value={config.user || ""}
-                        onChange={(e) =>
-                          setConfig({ ...config, user: e.target.value })
-                        }
-                        placeholder="root"
-                      />
-                    </div>
-                    <div>
-                      <Label className="mb-1 block">Working Directory (optional)</Label>
-                      <Input
-                        value={config.workingDir || ""}
-                        onChange={(e) =>
-                          setConfig({ ...config, workingDir: e.target.value })
-                        }
-                        placeholder="/path/to/directory"
-                      />
-                    </div>
-                  </>
-                )}
-
-                {scheduleType === "systemd-timer" && (
-                  <>
-                    <div>
-                      <Label className="mb-1 block">User (optional)</Label>
-                      <Input
-                        value={config.user || ""}
-                        onChange={(e) =>
-                          setConfig({ ...config, user: e.target.value })
-                        }
-                        placeholder="root"
-                      />
-                    </div>
-                    <div>
-                      <Label className="mb-1 block">Working Directory (optional)</Label>
-                      <Input
-                        value={config.workingDir || ""}
-                        onChange={(e) =>
-                          setConfig({ ...config, workingDir: e.target.value })
-                        }
-                        placeholder="/path/to/directory"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </Card>
-
-            <Card className="p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <Label className="text-lg font-bold">Generated Schedule</Label>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copyToClipboard(output)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      downloadFile(
-                        output,
-                        getFilename(),
-                        scheduleType === "github-actions" ? "text/yaml" : "text/plain"
-                      )
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
-                  </Button>
-                </div>
-              </div>
-              <CodeEditor
-                content={output}
-                onContentChange={(content) => setOutput(content)}
-                width={600}
-                height={600}
-              />
-            </Card>
+      <section className="code-col">
+        <div className="code-head">
+          <h2 className="code-title">
+            <span className="col-bar" aria-hidden />
+            Output
+          </h2>
+        </div>
+        <div className="code-tabs">
+          <button type="button" className="code-tab active">
+            {filename}
+          </button>
+        </div>
+        <div className="code-window">
+          <pre className="code-pre">
+            <code>{output || "# Fill the form to generate output."}</code>
+          </pre>
+          <div className="code-statusbar">
+            <span className="status-tag">
+              <span className="status-dot ok" aria-hidden />
+              Ready
+            </span>
+            <span className="status-mono">
+              {output.split("\n").length} lines · UTF-8 · LF
+            </span>
+            <span className="status-mono right">{filename}</span>
           </div>
-        </SidebarInset>
-      </SidebarProvider>
+        </div>
+      </section>
+    </div>
   );
 }
-
