@@ -9,7 +9,8 @@ import {
 import { Button } from "../ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import { CodeEditor } from "../CodeEditor";
-import { Copy, Download, Github, Globe, BookOpen } from "lucide-react";
+import { Copy, Download, Globe, BookOpen } from "lucide-react";
+import { GithubIcon as Github } from "../icons/BrandIcons";
 import { copyToClipboard, downloadFile } from "../../utils/clipboard";
 import { useToast } from "../ui/toast";
 
@@ -124,7 +125,7 @@ export function TemplateDetailModal({
         }
       }}
     >
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col gap-0 p-0">
+      <DialogContent className="max-w-6xl dialog-h-tall flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-start gap-4">
             {template.logoUrl && (
@@ -252,7 +253,7 @@ export function TemplateDetailModal({
               {template.composeContent ? (
                 <div className="space-y-4">
                   <div className="border rounded-lg overflow-hidden">
-                    <div className="min-h-[500px] max-h-[60vh]">
+                    <div className="editor-h-lg dialog-h-short">
                       <CodeEditor
                         content={template.composeContent}
                         onContentChange={() => {}}
@@ -298,6 +299,7 @@ export function TemplateDetailModal({
             <Button
               onClick={handleImport}
               disabled={importing || loading}
+              className="btn btn-primary"
             >
               {importing ? "Importing..." : "Import Template"}
             </Button>

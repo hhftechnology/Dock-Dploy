@@ -1,26 +1,29 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useState } from "react";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Template = any;
 
 export interface UseTemplateStoreReturn {
   templateStoreOpen: boolean;
   setTemplateStoreOpen: (open: boolean) => void;
-  templates: any[];
-  setTemplates: React.Dispatch<React.SetStateAction<any[]>>;
+  templates: Template[];
+  setTemplates: React.Dispatch<React.SetStateAction<Template[]>>;
   templateLoading: boolean;
   setTemplateLoading: (loading: boolean) => void;
   templateError: string | null;
   setTemplateError: (error: string | null) => void;
   templateSearch: string;
   setTemplateSearch: (search: string) => void;
-  selectedTemplate: any;
-  setSelectedTemplate: (template: any) => void;
+  selectedTemplate: Template;
+  setSelectedTemplate: (template: Template) => void;
   templateDetailOpen: boolean;
   setTemplateDetailOpen: (open: boolean) => void;
   templateDetailTab: "overview" | "compose";
   setTemplateDetailTab: (tab: "overview" | "compose") => void;
-  templateCache: any[];
+  templateCache: Template[];
   templateCacheTimestamp: number | null;
   fetchTemplatesFromGitHub: (backgroundUpdate?: boolean) => Promise<void>;
-  fetchTemplateDetails: (templateId: string) => Promise<any>;
+  fetchTemplateDetails: (templateId: string) => Promise<Template>;
   refreshTemplateStore: () => void;
 }
 
@@ -28,28 +31,40 @@ const GITHUB_OWNER = "hhftechnology";
 const GITHUB_REPO = "Marketplace";
 const GITHUB_BRANCH = "main";
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
+const CACHE_DURATION_MS = 60 * 60 * 1000;
+const CACHE_KEY = "templateStoreCache";
+const CACHE_TS_KEY = "templateStoreCacheTimestamp";
+
+function readCache(): { templates: Template[]; ts: number | null } {
+  if (typeof window === "undefined") return { templates: [], ts: null };
+  try {
+    const t = localStorage.getItem(CACHE_KEY);
+    const ts = localStorage.getItem(CACHE_TS_KEY);
+    return {
+      templates: t ? JSON.parse(t) : [],
+      ts: ts ? parseInt(ts, 10) : null,
+    };
+  } catch {
+    return { templates: [], ts: null };
+  }
+}
 
 export function useTemplateStore(): UseTemplateStoreReturn {
-  const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateStoreOpen, setTemplateStoreOpenState] = useState(false);
+  const initial = readCache();
+  const [templates, setTemplates] = useState<Template[]>(initial.templates);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateSearch, setTemplateSearch] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template>(null);
   const [templateDetailOpen, setTemplateDetailOpen] = useState(false);
   const [templateDetailTab, setTemplateDetailTab] = useState<
     "overview" | "compose"
   >("overview");
-  const [templateCache, setTemplateCache] = useState<any[]>(() => {
-    const cached = localStorage.getItem("templateStoreCache");
-    return cached ? JSON.parse(cached) : [];
-  });
+  const [templateCache, setTemplateCache] = useState<Template[]>(initial.templates);
   const [templateCacheTimestamp, setTemplateCacheTimestamp] = useState<
     number | null
-  >(() => {
-    const cached = localStorage.getItem("templateStoreCacheTimestamp");
-    return cached ? parseInt(cached) : null;
-  });
+  >(initial.ts);
 
   const fetchTemplatesFromGitHub = useCallback(
     async (backgroundUpdate: boolean = false) => {
@@ -57,123 +72,103 @@ export function useTemplateStore(): UseTemplateStoreReturn {
         setTemplateLoading(true);
         setTemplateError(null);
       }
-
       try {
-        // Fetch meta.json
         const metaUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/meta.json`;
         const metaResponse = await fetch(metaUrl);
-
         if (!metaResponse.ok) {
-          throw new Error(
-            `Failed to fetch templates: ${metaResponse.statusText}`
-          );
+          throw new Error(`Failed to fetch templates: ${metaResponse.statusText}`);
         }
-
-        const templatesMeta: any[] = await metaResponse.json();
-
-        // Store templates with metadata
+        const templatesMeta: Template[] = await metaResponse.json();
         setTemplates(templatesMeta);
         setTemplateCache(templatesMeta);
-        setTemplateCacheTimestamp(Date.now());
-        localStorage.setItem("templateStoreCache", JSON.stringify(templatesMeta));
-        localStorage.setItem(
-          "templateStoreCacheTimestamp",
-          String(Date.now())
-        );
-
-        if (!backgroundUpdate) {
-          setTemplateLoading(false);
+        const now = Date.now();
+        setTemplateCacheTimestamp(now);
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(templatesMeta));
+          localStorage.setItem(CACHE_TS_KEY, String(now));
+        } catch {
+          // localStorage may be disabled; non-fatal.
         }
-      } catch (error: any) {
+        if (!backgroundUpdate) setTemplateLoading(false);
+      } catch (error: unknown) {
+        const msg =
+          error instanceof Error ? error.message : "Failed to load templates";
+        // eslint-disable-next-line no-console
         console.error("Error fetching templates:", error);
         if (!backgroundUpdate) {
           setTemplateLoading(false);
-          setTemplateError(error.message || "Failed to load templates");
+          setTemplateError(msg);
         }
       }
     },
-    []
+    [],
+  );
+
+  // Open-the-store side effect handled in the setter — event-driven, not useEffect.
+  const setTemplateStoreOpen = useCallback(
+    (open: boolean) => {
+      setTemplateStoreOpenState(open);
+      if (!open) return;
+      const now = Date.now();
+      const fresh =
+        templateCache.length > 0 &&
+        templateCacheTimestamp !== null &&
+        now - templateCacheTimestamp < CACHE_DURATION_MS;
+      if (fresh) {
+        setTemplates(templateCache);
+        setTemplateLoading(false);
+        setTemplateError(null);
+        // Background refresh — fire and forget.
+        void fetchTemplatesFromGitHub(true);
+        return;
+      }
+      void fetchTemplatesFromGitHub(false);
+    },
+    [templateCache, templateCacheTimestamp, fetchTemplatesFromGitHub],
   );
 
   const fetchTemplateDetails = useCallback(
-    async (templateId: string): Promise<any> => {
+    async (templateId: string): Promise<Template> => {
       const template = templates.find((t) => t.id === templateId);
-      if (!template) {
-        throw new Error(`Template ${templateId} not found`);
-      }
+      if (!template) throw new Error(`Template ${templateId} not found`);
 
       try {
         const basePath = `compose-files/${templateId}`;
-
-        // Fetch docker-compose.yml
         const composeUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/docker-compose.yml`;
         const composeResponse = await fetch(composeUrl);
         if (!composeResponse.ok) {
           throw new Error(
-            `Failed to fetch docker-compose.yml: ${composeResponse.statusText}`
+            `Failed to fetch docker-compose.yml: ${composeResponse.statusText}`,
           );
         }
         const composeContent = await composeResponse.text();
-
-        // Build logo URL if logo exists
-        let logoUrl = null;
-        if (template.logo) {
-          logoUrl = `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/${template.logo}`;
-        }
-
-        return {
-          ...template,
-          composeContent,
-          logoUrl,
-        };
-      } catch (error: any) {
+        const logoUrl = template.logo
+          ? `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/${template.logo}`
+          : null;
+        return { ...template, composeContent, logoUrl };
+      } catch (error: unknown) {
+        // eslint-disable-next-line no-console
         console.error(
           `Error fetching template details for ${templateId}:`,
-          error
+          error,
         );
         throw error;
       }
     },
-    [templates]
+    [templates],
   );
 
   const refreshTemplateStore = useCallback(() => {
     setTemplateCache([]);
     setTemplateCacheTimestamp(null);
-    localStorage.removeItem("templateStoreCache");
-    localStorage.removeItem("templateStoreCacheTimestamp");
-    fetchTemplatesFromGitHub(false);
-  }, [fetchTemplatesFromGitHub]);
-
-  // Initialize templates when store opens
-  useEffect(() => {
-    if (!templateStoreOpen) return;
-
-    const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
-    const now = Date.now();
-
-    // Check if we have valid cached data
-    if (
-      templateCache.length > 0 &&
-      templateCacheTimestamp &&
-      now - templateCacheTimestamp < CACHE_DURATION
-    ) {
-      setTemplates(templateCache);
-      setTemplateLoading(false);
-      setTemplateError(null);
-
-      // Still check for updates in the background
-      fetchTemplatesFromGitHub(true);
-      return;
+    try {
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(CACHE_TS_KEY);
+    } catch {
+      // ignore
     }
-
-    fetchTemplatesFromGitHub(false);
-  }, [
-    templateStoreOpen,
-    templateCache,
-    templateCacheTimestamp,
-    fetchTemplatesFromGitHub,
-  ]);
+    void fetchTemplatesFromGitHub(false);
+  }, [fetchTemplatesFromGitHub]);
 
   return {
     templateStoreOpen,
@@ -199,4 +194,3 @@ export function useTemplateStore(): UseTemplateStoreReturn {
     refreshTemplateStore,
   };
 }
-

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { updateMetaTags } from "../lib/meta-tags";
 import type { MetaTagsConfig } from "../lib/meta-tags";
@@ -10,57 +9,58 @@ interface MetaTagsProps {
   type?: string;
 }
 
-export function MetaTags({
-  title,
-  description,
-  image,
-  type,
-}: MetaTagsProps) {
+/**
+ * Updates document.title and meta tags as a render-time side effect.
+ *
+ * The DOM read of document.title is idempotent — calling updateMetaTags with
+ * the same inputs writes the same values, so doing it during render is safe
+ * (no observable user-visible side effect beyond the title bar). This replaces
+ * the previous useEffect-based implementation, which created a microtask
+ * stampede on route changes and could lose updates during fast-switching.
+ */
+export function MetaTags({ title, description, image, type }: MetaTagsProps) {
   const router = useRouterState();
   const pathname = router.location.pathname;
 
-  useEffect(() => {
-    // Get route-specific meta tags or use provided props
-    const routeMeta = routeMetaTags[pathname];
-    const config: MetaTagsConfig = {
-      title: title || routeMeta?.title,
-      description: description || routeMeta?.description,
-      image: image || routeMeta?.image,
-      type: type || routeMeta?.type,
-      url: typeof window !== "undefined" ? window.location.href : undefined,
-    };
+  const routeMeta = routeMetaTags[pathname];
+  const config: MetaTagsConfig = {
+    title: title || routeMeta?.title,
+    description: description || routeMeta?.description,
+    image: image || routeMeta?.image,
+    type: type || routeMeta?.type,
+    url: typeof window !== "undefined" ? window.location.href : undefined,
+  };
 
+  // Mutate document during render. SSR-safe via the document guard inside
+  // updateMetaTags + the lib's own typeof window checks.
+  if (typeof document !== "undefined") {
     updateMetaTags(config);
-  }, [pathname, title, description, image, type]);
+  }
 
   return null;
 }
 
-// Route-specific meta tag configurations
 export const routeMetaTags: Record<string, MetaTagsConfig> = {
   "/": {
-    title: "Dock-Dploy - Build Docker Compose Files Without the Hassle",
+    title: "Dock-Dploy — Build Docker Compose Without the Hassle",
     description:
-      "A powerful web-based tool for building and managing Docker Compose files, configurations, and schedulers. All in one place, completely free.",
+      "Calm, visual surface for Docker Compose, configs, and schedulers. Open source, AGPL-3.0.",
     image: "/og-image.png",
   },
   "/docker/compose-builder": {
-    title: "Docker Compose Builder - Dock-Dploy",
+    title: "Compose Builder — Dock-Dploy",
     description:
-      "Build and manage Docker Compose files with an intuitive interface. Validate, reformat, and convert to various formats.",
+      "Build and manage Docker Compose files with a tabbed editor. Validate, reformat, and export.",
     image: "/og-image.png",
   },
   "/config-builder": {
-    title: "Config Builder - Dock-Dploy",
-    description:
-      "Create configuration files for popular self-hosted tools like Homepage.dev and more.",
+    title: "Config Builder — Dock-Dploy",
+    description: "Generate configs for self-hosted tools like Homepage.dev.",
     image: "/og-image.png",
   },
   "/scheduler-builder": {
-    title: "Scheduler Builder - Dock-Dploy",
-    description:
-      "Generate schedulers for Cron, GitHub Actions, Systemd timers, and more with a simple form.",
+    title: "Scheduler Builder — Dock-Dploy",
+    description: "Generate cron, GitHub Actions, and systemd timer schedules.",
     image: "/og-image.png",
   },
 };
-

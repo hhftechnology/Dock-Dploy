@@ -40,10 +40,19 @@ export function parseComposeService(
     command: parseCommandArray(actualServiceData.command),
     restart: actualServiceData.restart || "",
     ports: Array.isArray(actualServiceData.ports)
-      ? actualServiceData.ports.map((p: string) => {
+      ? actualServiceData.ports.map((p: any) => {
+          if (typeof p === "object" && p !== null) {
+            return {
+              host: p.published ? String(p.published) : "",
+              container: p.target ? String(p.target) : "",
+              protocol: p.protocol || "none",
+            };
+          }
+
+          const portStr = String(p);
           // Handle format: "host:container/protocol" or "container/protocol" or just "container"
-          if (p.includes(":")) {
-            const parts = p.split(":");
+          if (portStr.includes(":")) {
+            const parts = portStr.split(":");
             const host = parts[0];
             const containerWithProtocol = parts[1] || "";
             const [container, protocol] = containerWithProtocol.split("/");
@@ -54,7 +63,7 @@ export function parseComposeService(
             };
           } else {
             // No colon means it's just a container port, possibly with protocol
-            const [container, protocol] = p.split("/");
+            const [container, protocol] = portStr.split("/");
             return {
               host: "",
               container,
@@ -364,25 +373,39 @@ export function parseComposeTemplate(composeContent: string): {
   networks: Record<string, any>;
   volumes: Record<string, any>;
 } {
-  const doc = jsyaml.load(composeContent) as any;
+  let doc: any;
+  try {
+    doc = jsyaml.load(composeContent);
+  } catch (err: any) {
+    throw new Error(`Invalid YAML format: ${err.message}`);
+  }
 
-  if (!doc || !doc.services) {
-    throw new Error("Invalid docker-compose.yml in template");
+  if (!doc || typeof doc !== "object") {
+    throw new Error("Invalid template: Content is not a valid YAML object");
+  }
+
+  if (!doc.services || typeof doc.services !== "object") {
+    throw new Error("Invalid template: Missing or invalid 'services' block");
   }
 
   // Extract all services from compose file
-  const servicesArray: ComposeServiceInput[] = Object.entries(
-    doc.services
-  ).map(([svcName, svcObj]: [string, any]) => ({
-    name: svcName,
-    image: svcObj.image || "",
-    rawService: svcObj,
-  }));
+  const servicesArray: ComposeServiceInput[] = [];
+  
+  for (const [svcName, svcObj] of Object.entries(doc.services)) {
+    if (!svcObj || typeof svcObj !== "object") {
+      throw new Error(`Invalid template: Service '${svcName}' is not a valid object`);
+    }
+    servicesArray.push({
+      name: svcName,
+      image: (svcObj as any).image || "",
+      rawService: svcObj,
+    });
+  }
 
   return {
     services: servicesArray,
-    networks: doc.networks || {},
-    volumes: doc.volumes || {},
+    networks: doc.networks && typeof doc.networks === "object" ? doc.networks : {},
+    volumes: doc.volumes && typeof doc.volumes === "object" ? doc.volumes : {},
   };
 }
 

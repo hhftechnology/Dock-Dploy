@@ -1,308 +1,201 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback } from "react";
-import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
-import {
-  Container,
-  FileText,
-  Clock,
-  Github,
-  MessageCircle,
-  ArrowRight,
-  CheckCircle2,
-  Zap,
-  Shield,
-  Code,
-  Info,
-} from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
+const STATS = [
+  { num: "12+", label: "Output formats" },
+  { num: "6", label: "VPN providers" },
+  { num: "100+", label: "Curated templates" },
+];
+
 const FEATURES = [
   {
-    title: "Docker Compose Builder",
-    description:
-      "Build and manage Docker Compose files with an intuitive interface. Validate, reformat, and convert to various formats.",
-    icon: Container,
-    url: "/docker/compose-builder",
-    highlights: [
-      "Visual compose file builder",
-      "Validate & reformat YAML",
-      "Convert to docker run commands",
-      "Export to systemd services",
-      "Resource allocation support",
-      "Dual syntax support (array/dict)",
-    ],
+    kicker: "01",
+    title: "Compose, visually",
+    body: "Build services, networks, volumes, and VPN sidecars through a layout that surfaces what matters — port mappings, environment, healthchecks — without burying you in YAML.",
+    bullets: ["Real-time YAML validation", "Tabbed service form", "Live preview pane"],
+    cta: { label: "Open Compose Builder", to: "/docker/compose-builder" },
   },
   {
-    title: "Config Builder",
-    description:
-      "Create configuration files for popular self-hosted tools like Homepage.dev and more.",
-    icon: FileText,
-    url: "/config-builder",
-    highlights: [
-      "Homepage.dev config generator",
-      "YAML configuration builder",
-      "Easy-to-use interface",
-      "Export and download",
-    ],
+    kicker: "02",
+    title: "Configs that respect taste",
+    body: "Generate Homepage dashboard configs, service catalogs, and friends — visually edited, exported clean. No more hand-tuning YAML in a text editor.",
+    bullets: ["Visual config editor", "Schema-validated", "One-click export"],
+    cta: { label: "Open Config Builder", to: "/config-builder" },
   },
   {
-    title: "Scheduler Builder",
-    description:
-      "Generate schedulers for Cron, GitHub Actions, Systemd timers, and more with a simple form.",
-    icon: Clock,
-    url: "/scheduler-builder",
-    highlights: [
-      "Cron expression generator",
-      "GitHub Actions workflows",
-      "Systemd timer units",
-      "Flexible scheduling options",
-    ],
+    kicker: "03",
+    title: "Schedules without ceremony",
+    body: "Cron, GitHub Actions, systemd timers — described once, exported everywhere. A friendlier cron expression builder makes intervals readable.",
+    bullets: ["Cron expression builder", "Multi-format export", "Plain-English preview"],
+    cta: { label: "Open Scheduler", to: "/scheduler-builder" },
   },
 ] as const;
 
-const BENEFITS = [
-  {
-    icon: Zap,
-    title: "Fast & Efficient",
-    description: "Build complex configurations in minutes, not hours",
-  },
-  {
-    icon: Shield,
-    title: "Validated Output",
-    description: "All generated files are validated for correctness",
-  },
-  {
-    icon: Code,
-    title: "Developer Friendly",
-    description: "Clean, readable code output with proper formatting",
-  },
-] as const;
+type MiniLine = {
+  kind: "key" | "ind1key" | "ind2key" | "ind2arr" | "ind3key";
+  text: string;
+  val?: string;
+};
+
+const MINI_CODE_LINES: MiniLine[] = [
+  { kind: "key", text: "services:" },
+  { kind: "ind1key", text: "web:" },
+  { kind: "ind2key", text: "image:", val: "nginx:1.27-alpine" },
+  { kind: "ind2key", text: "restart:", val: "unless-stopped" },
+  { kind: "ind2key", text: "ports:" },
+  { kind: "ind2arr", text: '"80:80/tcp"' },
+  { kind: "ind2key", text: "healthcheck:" },
+  { kind: "ind3key", text: "test:", val: '["CMD", "curl", "-f", "/"]' },
+  { kind: "ind3key", text: "interval:", val: "30s" },
+];
 
 function LandingPage() {
   const navigate = useNavigate();
-
-  const handleComposeBuilder = useCallback(() => {
-    navigate({ to: "/docker/compose-builder" });
-  }, [navigate]);
-
-  const handleGitHub = useCallback(() => {
-    window.open("https://github.com/hhftechnology/Dock-Dploy", "_blank");
-  }, []);
-
-  const handleDiscord = useCallback(() => {
-    window.open("https://discord.gg/HDCt9MjyMJ", "_blank");
-  }, []);
-
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-background to-muted/20 py-16 md:py-24">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col items-center space-y-6 text-center">
-            <div className="space-y-4">
-              <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl">
-                Build Docker Compose Files
-                <span className="block text-primary mt-2">
-                  Without the Hassle
-                </span>
-              </h1>
-              <div className="mx-auto max-w-[700px] flex items-start justify-center gap-2">
-                <p className="text-muted-foreground text-lg md:text-xl">
-                  A powerful web-based tool for building and managing Docker
-                  Compose files, configurations, and schedulers. All in one place,
-                  completely free.
-                </p>
-                <Tooltip delayDuration={200}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-1"
-                      aria-label="Privacy information"
-                    >
-                      <Info className="h-4 w-4 md:h-5 md:w-5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs" sideOffset={5}>
-                    <p className="text-xs">
-                      All information you add stays in your browser and is never sent to any server. Your data remains private and secure.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
+    <div className="landing">
+      {/* Hero */}
+      <section className="hero">
+        <div className="hero-grid">
+          <div>
+            <span className="eyebrow">
+              <span className="spike">◆</span>
+              Editorial Docker Compose tooling
+            </span>
+            <h1 className="display-xl">
+              Build, validate,
+              <br />
+              and <span className="serif-em">ship</span> Docker stacks.
+            </h1>
+            <p className="lede">
+              Dock-Dploy is a calm, visual surface for Docker Compose, configs, and
+              schedulers. Friendly enough for first-timers, fast enough for
+              homelab operators, honest enough for production.
+            </p>
+            <div className="hero-cta-row">
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={() => navigate({ to: "/docker/compose-builder" })}
+              >
+                Launch Builder
+                <span className="arr" aria-hidden>→</span>
+              </button>
+              <a
+                className="btn btn-text-link"
+                href="https://github.com/hhftechnologies/Dock-Dploy"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Star on GitHub
+                <span className="arr" aria-hidden>↗</span>
+              </a>
+            </div>
+            <div className="hero-stats">
+              {STATS.map((s, i) => (
+                <div key={s.label}>
+                  {i > 0 && <span className="vrule" aria-hidden />}
+                  <div className="stat-num">{s.num}</div>
+                  <div className="stat-lbl">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="hero-right">
+            <span className="badge-coral hero-badge">Live preview</span>
+            <div className="mini-code-card">
+              <div className="mini-code-head">
+                <span className="dot r" aria-hidden />
+                <span className="dot y" aria-hidden />
+                <span className="dot g" aria-hidden />
+                <span className="mini-code-name">compose.yml</span>
+              </div>
+              <pre className="mini-code-pre">
+                <code>{MINI_CODE_LINES.map(formatLine).join("\n")}</code>
+              </pre>
+              <div className="mini-code-foot">
+                <span>YAML · valid</span>
+                <span>9 lines</span>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-              <Button
-                size="lg"
-                className="text-lg px-8 py-6"
-                onClick={handleComposeBuilder}
-              >
-                Get Started
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="text-lg px-8 py-6"
-                onClick={handleGitHub}
-              >
-                <Github className="mr-2 h-5 w-5" />
-                View on GitHub
-              </Button>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-16 md:py-20 bg-background">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col items-center justify-center space-y-4 text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
-              Powerful Tools for Developers
+      {/* Feature band */}
+      <section className="band band-cream-soft">
+        <div className="band-inner">
+          <div className="band-head">
+            <div className="band-eyebrow">A complete toolbox</div>
+            <h2 className="display-lg">Three builders. One canvas.</h2>
+          </div>
+          <div className="feature-grid">
+            {FEATURES.map((f) => (
+              <article key={f.kicker} className="feature-card">
+                <span className="feat-kicker">/ {f.kicker}</span>
+                <h3 className="feat-title">{f.title}</h3>
+                <p className="feat-body">{f.body}</p>
+                <ul className="feat-bullets">
+                  {f.bullets.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+                <button
+                  className="btn btn-text-link feat-cta"
+                  onClick={() => navigate({ to: f.cta.to })}
+                >
+                  {f.cta.label}
+                  <span className="arr" aria-hidden>→</span>
+                </button>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Coral callout */}
+      <section className="band-callout">
+        <div className="callout-card">
+          <div>
+            <h2 className="display-md">
+              Open source, AGPL-3.0,
+              <br />
+              hand-built with care.
             </h2>
-            <p className="max-w-[900px] text-muted-foreground text-lg md:text-xl">
-              Everything you need to build, manage, and deploy containerized
-              applications
+            <p>
+              Run it locally, host it yourself, or fork it for your team. No
+              telemetry, no sign-in, no surprises.
             </p>
           </div>
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((feature) => {
-              const Icon = feature.icon;
-              return (
-                <Card
-                  key={feature.title}
-                  className="flex flex-col hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => navigate({ to: feature.url })}
-                >
-                  <CardHeader>
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <Icon className="h-6 w-6 text-primary" />
-                      </div>
-                      <CardTitle className="text-2xl">
-                        {feature.title}
-                      </CardTitle>
-                    </div>
-                    <CardDescription className="text-base">
-                      {feature.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex-1 flex flex-col">
-                    <ul className="space-y-2 mb-4 flex-1">
-                      {feature.highlights.map((highlight, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-2 text-sm"
-                        >
-                          <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                          <span className="text-muted-foreground">
-                            {highlight}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      variant="outline"
-                      className="w-full mt-auto"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate({ to: feature.url });
-                      }}
-                    >
-                      Try Now
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="py-16 md:py-20 bg-muted/50">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col items-center justify-center space-y-4 text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
-              Why Choose Dock-Dploy?
-            </h2>
-            <p className="max-w-[900px] text-muted-foreground text-lg md:text-xl">
-              Built by developers, for developers
-            </p>
-          </div>
-          <div className="grid gap-8 md:grid-cols-3">
-            {BENEFITS.map((benefit) => {
-              const Icon = benefit.icon;
-              return (
-                <div
-                  key={benefit.title}
-                  className="flex flex-col items-center text-center space-y-4"
-                >
-                  <div className="p-4 rounded-full bg-primary/10">
-                    <Icon className="h-8 w-8 text-primary" />
-                  </div>
-                  <h3 className="text-xl font-semibold">{benefit.title}</h3>
-                  <p className="text-muted-foreground max-w-[300px]">
-                    {benefit.description}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-16 md:py-20 bg-background">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col items-center justify-center space-y-8 text-center">
-            <div className="space-y-4">
-              <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
-                Ready to Get Started?
-              </h2>
-              <p className="max-w-[700px] text-muted-foreground text-lg md:text-xl">
-                Start building your Docker Compose files today. No signup
-                required, completely free.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button
-                size="lg"
-                className="text-lg px-8 py-6"
-                onClick={handleComposeBuilder}
-              >
-                Start Building
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="text-lg px-8 py-6"
-                onClick={handleDiscord}
-              >
-                <MessageCircle className="mr-2 h-5 w-5" />
-                Join Discord
-              </Button>
-            </div>
-          </div>
+          <button
+            className="btn btn-on-coral btn-lg"
+            onClick={() => navigate({ to: "/docker/compose-builder" })}
+          >
+            Start building
+            <span className="arr" aria-hidden>→</span>
+          </button>
         </div>
       </section>
     </div>
   );
+}
+
+function formatLine(l: MiniLine): string {
+  // simple text formatting for the mini preview — no syntax highlighting here
+  switch (l.kind) {
+    case "key":
+      return l.text;
+    case "ind1key":
+      return `  ${l.text}`;
+    case "ind2key":
+      return l.val ? `    ${l.text} ${l.val}` : `    ${l.text}`;
+    case "ind2arr":
+      return `      - ${l.text}`;
+    case "ind3key":
+      return l.val ? `      ${l.text} ${l.val}` : `      ${l.text}`;
+    default:
+      return "";
+  }
 }

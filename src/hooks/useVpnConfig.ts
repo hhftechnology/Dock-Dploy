@@ -15,7 +15,7 @@ export interface UseVpnConfigReturn {
   setVpnConfig: React.Dispatch<React.SetStateAction<VPNConfig>>;
   vpnConfigOpen: boolean;
   setVpnConfigOpen: (open: boolean) => void;
-  updateVpnType: (type: VPNConfig["type"]) => void;
+  updateVpnType: (type: VPNConfig["type"] | "none") => void;
   updateTailscaleConfig: (updates: Partial<VPNConfig["tailscale"]>) => void;
   updateNewtConfig: (updates: Partial<VPNConfig["newt"]>) => void;
   updateCloudflaredConfig: (updates: Partial<VPNConfig["cloudflared"]>) => void;

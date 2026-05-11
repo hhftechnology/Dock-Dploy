@@ -31,7 +31,7 @@ export function useConversionDialog({
   const handleConversion = useCallback(
     (type: ConversionType) => {
       setConversionType(type);
-      let output = "";
+      let output: string;
 
       try {
         switch (type) {

@@ -95,7 +95,7 @@ export function convertToDockerRun(service: ServiceConfig): string {
 export function convertToSystemd(service: ServiceConfig): string {
   const containerName = service.container_name || service.name;
 
-  let unit = `[Unit]
+  return `[Unit]
 Description=Docker Container ${containerName}
 Requires=docker.service
 After=docker.service
@@ -110,8 +110,6 @@ Restart=${service.restart === "always" ? "always" : service.restart === "unless-
 [Install]
 WantedBy=multi-user.target
 `;
-
-  return unit;
 }
 
 // Generate Komodo .toml from YAML
