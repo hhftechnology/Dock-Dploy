@@ -17,10 +17,6 @@ A web-based tool for building, managing, and converting Docker Compose files, co
 
 
 <div align="center">
-
-
-
-
 <img width="1366" height="768" alt="1" src="https://github.com/user-attachments/assets/d01493b6-f036-4f30-941b-cb3716847449" />
 <img width="1366" height="768" alt="4" src="https://github.com/user-attachments/assets/3abfcbe0-78ea-4ed2-aab7-92b5d47db4e5" />
 <img width="1366" height="768" alt="3" src="https://github.com/user-attachments/assets/d9122283-7df6-4e98-943f-9ca1636bf2a6" />
@@ -29,13 +25,13 @@ A web-based tool for building, managing, and converting Docker Compose files, co
 
 ##  Table of Contents
 
-- [Features](#-features)
-- [Quick Start](#-quick-start)
-- [Deployment Options](#-deployment-options)
-- [Usage Guide](#-usage-guide)
-- [Tech Stack](#-tech-stack)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Deployment Options](#deployment-options)
+- [Usage Guide](#usage-guide)
+- [Tech Stack](#tech-stack)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
