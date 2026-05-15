@@ -9,7 +9,7 @@ import {
 } from "../generator";
 
 describe("fromCompose", () => {
-  it("creates one resource per service with exposed ports", () => {
+  it("creates one resource per compose service", () => {
     const compose = `version: "3.8"
 services:
   web:
@@ -20,13 +20,16 @@ services:
     image: postgres:16
 `;
     const bp = fromCompose(compose, "example.com");
-    expect(bp.resources.length).toBe(1);
+    expect(bp.resources.length).toBe(2);
     expect(bp.resources[0].serviceContainerName).toBe("web");
     expect(bp.resources[0].blueprintName).toBe("web");
     expect(bp.resources[0].subdomain).toBe("web");
     expect(bp.resources[0].servicePort).toBe(8080);
     expect(bp.resources[0].protocol).toBe("http");
     expect(bp.resources[0].image).toBe("nginx:latest");
+    expect(bp.resources[1].serviceContainerName).toBe("db");
+    expect(bp.resources[1].servicePort).toBe(80);
+    expect(bp.resources[1].image).toBe("postgres:16");
   });
 
   it("uses https for port 443 / 8443", () => {
@@ -81,6 +84,25 @@ describe("toComposeYaml", () => {
     expect(yaml).toContain(
       "pangolin.public-resources.web.targets[0].method=http",
     );
+  });
+
+
+  it("leaves disabled compose services unlabelled", () => {
+    const bp = fromCompose(`services:
+  web:
+    image: nginx
+    ports:
+      - "80"
+  worker:
+    image: busybox
+`);
+    bp.resources = bp.resources.filter((r) => r.serviceContainerName !== "worker");
+    const yaml = toComposeYaml(bp);
+    const parsed = jsyaml.load(yaml) as Record<string, unknown>;
+    const services = parsed.services as Record<string, Record<string, unknown>>;
+    expect(services.worker).toBeTruthy();
+    expect(services.worker.labels).toBeUndefined();
+    expect(String(yaml)).not.toContain("pangolin.public-resources.worker");
   });
 
   it("adds the external pangolin network block", () => {
@@ -219,8 +241,8 @@ describe("toEnvExample", () => {
       - "3000"
 `);
     const env = toEnvExample(bp);
-    expect(env).toMatch(/─── web ───/);
-    expect(env).toMatch(/─── api ───/);
+    expect(env).toMatch(/--- web ---/);
+    expect(env).toMatch(/--- api ---/);
   });
 
   it("returns a placeholder when no resources are present", () => {
