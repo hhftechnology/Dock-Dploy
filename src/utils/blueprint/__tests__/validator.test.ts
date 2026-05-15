@@ -74,6 +74,17 @@ describe("validateBlueprint", () => {
     expect(validateBlueprint(bp)).toEqual([]);
   });
 
+
+  it("validates a marketplace service without ports using defaults", () => {
+    const bp = fromCompose(`services:
+  worker:
+    image: busybox
+`, "example.com");
+    expect(bp.resources).toHaveLength(1);
+    expect(bp.resources[0].servicePort).toBe(80);
+    expect(validateBlueprint(bp)).toEqual([]);
+  });
+
   it("flags duplicate blueprintNames", () => {
     const bp = fromCompose(`services:
   a:

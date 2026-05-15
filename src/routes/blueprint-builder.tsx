@@ -16,9 +16,9 @@ import { TemplateDetailModal } from "../components/templates/TemplateDetailModal
 import { Field, ValidatedInput } from "../components/compose-builder/ServiceForm/Field";
 import { useTemplateStore } from "../hooks/useTemplateStore";
 import {
-  defaultResource,
   defaultBlueprint,
   fromCompose,
+  resourceFromComposeService,
   toComposeYaml,
   toEnvExample,
 } from "../utils/blueprint/generator";
@@ -58,6 +58,21 @@ function BlueprintBuilderRoute() {
   const composeYaml = useMemo(() => toComposeYaml(blueprint), [blueprint]);
   const envExample = useMemo(() => toEnvExample(blueprint), [blueprint]);
   const errors = useMemo(() => validateBlueprint(blueprint), [blueprint]);
+  const composeServiceEntries = useMemo(() => {
+    const services = blueprint.composeDocument?.services;
+    if (!services || typeof services !== "object" || Array.isArray(services)) {
+      return [] as Array<[string, unknown]>;
+    }
+    return Object.entries(services as Record<string, unknown>);
+  }, [blueprint.composeDocument]);
+  const enabledServiceNames = useMemo(
+    () => new Set(blueprint.resources.map((r) => r.serviceContainerName)),
+    [blueprint.resources],
+  );
+  const availableComposeServices = useMemo(
+    () => composeServiceEntries.filter(([name]) => !enabledServiceNames.has(name)),
+    [composeServiceEntries, enabledServiceNames],
+  );
 
   const handleNavView = useCallback(
     (next: BuilderView) => {
@@ -81,18 +96,39 @@ function BlueprintBuilderRoute() {
 
   const removeResource = useCallback(
     (idx: number) => {
+      const nextLength = Math.max(blueprint.resources.length - 1, 0);
       setBlueprint((bp) => ({
         ...bp,
         resources: bp.resources.filter((_, i) => i !== idx),
       }));
       setSelectedIdx((cur) => {
-        if (cur === null) return null;
-        if (cur === idx) return null;
+        if (cur === null) return nextLength > 0 ? 0 : null;
+        if (cur === idx) return nextLength > 0 ? Math.min(idx, nextLength - 1) : null;
         if (cur > idx) return cur - 1;
         return cur;
       });
     },
-    [],
+    [blueprint.resources.length],
+  );
+
+  const addResourceForComposeService = useCallback(
+    (serviceName: string, rawService: unknown) => {
+      setBlueprint((bp) => {
+        const existingNames = new Set(bp.resources.map((r) => r.blueprintName));
+        const resource = resourceFromComposeService(serviceName, rawService);
+        const baseName = resource.blueprintName;
+        let nextName = baseName;
+        let suffix = 2;
+        while (existingNames.has(nextName)) {
+          nextName = `${baseName}-${suffix}`;
+          suffix += 1;
+        }
+        resource.blueprintName = nextName;
+        return { ...bp, resources: [...bp.resources, resource] };
+      });
+      setSelectedIdx(blueprint.resources.length);
+    },
+    [blueprint.resources.length],
   );
 
   const importTemplate = useCallback(
@@ -103,13 +139,17 @@ function BlueprintBuilderRoute() {
       const next = fromCompose(template.composeContent, blueprint.baseDomain);
       setBlueprint(next);
       setSelectedIdx(next.resources.length > 0 ? 0 : null);
+      templateStore.setTemplateDetailOpen(false);
+      templateStore.setTemplateStoreOpen(false);
+      templateStore.setSelectedTemplate(null);
+      templateStore.setTemplateDetailTab("overview");
       toast({
         title: "Template imported",
         description: `${next.resources.length} resource${next.resources.length === 1 ? "" : "s"} ready to label`,
         variant: "success",
       });
     },
-    [blueprint.baseDomain, toast],
+    [blueprint.baseDomain, templateStore, toast],
   );
 
   const output = outputTab === "compose" ? composeYaml : envExample;
@@ -214,6 +254,35 @@ function BlueprintBuilderRoute() {
                   );
                 })}
               </div>
+            )}
+
+            {availableComposeServices.length > 0 && (
+              <>
+                <div className="svc-section-head">
+                  <h3 className="svc-section-title">Available compose services</h3>
+                  <p className="svc-section-sub">
+                    Add Pangolin labels back to services preserved in the imported compose file.
+                  </p>
+                </div>
+                <div className="service-list">
+                  {availableComposeServices.map(([serviceName, rawService]) => (
+                    <div className="service-row" key={serviceName}>
+                      <span className="status-dot warn" aria-hidden />
+                      <span className="service-row-text">
+                        <span className="service-row-name">{serviceName}</span>
+                        <span className="service-row-meta">Pangolin disabled</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="add-pill"
+                        onClick={() => addResourceForComposeService(serviceName, rawService)}
+                      >
+                        <Plus size={12} /> Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -695,5 +764,3 @@ function ResourceForm({
   );
 }
 
-// silence unused-import warnings
-void defaultResource;

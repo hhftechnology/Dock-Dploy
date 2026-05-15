@@ -18,6 +18,7 @@ import type {
 const ENV_REF = (k: string) => `\${${k}}`;
 const ENV_REQUIRED = (k: string, msg: string) => `\${${k}:?${msg}}`;
 const DEFAULT_NETWORK = "pangolin_default";
+const DEFAULT_SERVICE_PORT = 80;
 
 export function defaultAuth(): BlueprintAuth {
   return {
@@ -128,6 +129,41 @@ function protocolFor(port: number): BlueprintProtocol {
   return "http";
 }
 
+export function resourceFromComposeService(
+  serviceKey: string,
+  rawService: unknown,
+): BlueprintResource {
+  const svc =
+    rawService && typeof rawService === "object"
+      ? (rawService as Record<string, unknown>)
+      : {};
+  const port = firstServicePort(svc) ?? DEFAULT_SERVICE_PORT;
+  const sluggedKey = slug(serviceKey) || serviceKey.toLowerCase() || "service";
+
+  return {
+    ...defaultResource(),
+    serviceContainerName: serviceKey,
+    blueprintName: sluggedKey,
+    resourceName: titleCase(serviceKey) || serviceKey,
+    subdomain: sluggedKey,
+    servicePort: port,
+    image: typeof svc.image === "string" ? svc.image : "",
+    protocol: protocolFor(port),
+  };
+}
+
+function uniqueBlueprintName(base: string, seen: Set<string>): string {
+  if (!seen.has(base)) {
+    seen.add(base);
+    return base;
+  }
+  let i = 2;
+  while (seen.has(`${base}-${i}`)) i += 1;
+  const next = `${base}-${i}`;
+  seen.add(next);
+  return next;
+}
+
 export function fromCompose(yamlContent: string, baseDomain = ""): Blueprint {
   let doc: unknown;
   try {
@@ -147,22 +183,14 @@ export function fromCompose(yamlContent: string, baseDomain = ""): Blueprint {
   bp.baseDomain = baseDomain;
   bp.composeDocument = root;
 
+  const seenBlueprintNames = new Set<string>();
   for (const [svcKey, raw] of Object.entries(services)) {
     if (!raw || typeof raw !== "object") continue;
-    const svc = raw as Record<string, unknown>;
-    const port = firstServicePort(svc);
-    if (port === null) continue;
-    const sluggedKey = slug(svcKey) || svcKey;
-    const resource: BlueprintResource = {
-      ...defaultResource(),
-      serviceContainerName: svcKey,
-      blueprintName: sluggedKey,
-      resourceName: titleCase(svcKey) || svcKey,
-      subdomain: sluggedKey,
-      servicePort: port,
-      image: typeof svc.image === "string" ? svc.image : "",
-      protocol: protocolFor(port),
-    };
+    const resource = resourceFromComposeService(svcKey, raw);
+    resource.blueprintName = uniqueBlueprintName(
+      resource.blueprintName,
+      seenBlueprintNames,
+    );
     bp.resources.push(resource);
   }
   return bp;
@@ -188,6 +216,24 @@ function dedupePreserveOrder<T>(items: T[]): T[] {
     out.push(item);
   }
   return out;
+}
+
+function labelsToArray(labels: unknown): string[] {
+  if (Array.isArray(labels)) {
+    return labels.map((v) => String(v));
+  }
+  if (isPlainObject(labels)) {
+    return Object.entries(labels).map(([key, value]) => `${key}=${String(value)}`);
+  }
+  return [];
+}
+
+function removePangolinResourceLabels(
+  labels: string[],
+  blueprintName: string,
+): string[] {
+  const prefix = `pangolin.public-resources.${blueprintName}.`;
+  return labels.filter((label) => !label.startsWith(prefix));
 }
 
 function labelsFor(bp: Blueprint, r: BlueprintResource): string[] {
@@ -245,19 +291,20 @@ export function toComposeYaml(bp: Blueprint): string {
       ? (services[r.serviceContainerName] as Record<string, unknown>)
       : {};
     // Inject labels — merge with anything already there, de-dupe.
-    const existing: string[] = Array.isArray(svc.labels)
-      ? (svc.labels as unknown[]).map((v) => String(v))
-      : [];
+    const existing = removePangolinResourceLabels(
+      labelsToArray(svc.labels),
+      r.blueprintName,
+    );
     svc.labels = dedupePreserveOrder([...existing, ...labelsFor(bp, r)]);
 
-    // Ensure pangolin network membership.
-    const nets: unknown[] = Array.isArray(svc.networks)
-      ? (svc.networks as unknown[])
-      : [];
-    if (!nets.includes("pangolin")) {
-      svc.networks = [...nets, "pangolin"];
+    // Ensure pangolin network membership without discarding existing syntax.
+    if (Array.isArray(svc.networks)) {
+      const nets = svc.networks as unknown[];
+      svc.networks = nets.includes("pangolin") ? nets : [...nets, "pangolin"];
+    } else if (isPlainObject(svc.networks)) {
+      svc.networks = { ...svc.networks, pangolin: {} };
     } else {
-      svc.networks = nets;
+      svc.networks = ["pangolin"];
     }
 
     services[r.serviceContainerName] = svc;
@@ -297,7 +344,7 @@ export function toEnvExample(bp: Blueprint): string {
   const blocks: string[] = [];
   bp.resources.forEach((r, i) => {
     const header =
-      bp.resources.length > 1 ? `# ─── ${r.serviceContainerName} ───\n` : "";
+      bp.resources.length > 1 ? `# --- ${r.serviceContainerName} ---\n` : "";
     const auth = `
 # Optional resource auth overrides — uncomment and set as needed.
 # RESOURCE_AUTH_PINCODE=
