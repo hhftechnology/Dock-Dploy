@@ -224,14 +224,14 @@ export function resourceFromComposeService(
       ? (rawService as Record<string, unknown>)
       : {};
   const port = firstServicePort(svc) ?? DEFAULT_SERVICE_PORT;
-  const sluggedKey = slug(serviceKey) || serviceKey.toLowerCase() || "service";
+  const blueprintName = slug(serviceKey) || serviceKey.toLowerCase() || "service";
 
   return {
     ...defaultResource(),
     serviceContainerName: serviceKey,
-    blueprintName: sluggedKey,
+    blueprintName,
     resourceName: titleCase(serviceKey) || serviceKey,
-    subdomain: sluggedKey,
+    subdomain: blueprintName,
     servicePort: port,
     image: typeof svc.image === "string" ? svc.image : "",
     protocol: "http",
@@ -278,6 +278,7 @@ export function fromCompose(yamlContent: string, baseDomain = ""): Blueprint {
       resource.blueprintName,
       seenBlueprintNames,
     );
+    resource.subdomain = resource.blueprintName;
     bp.resources.push(resource);
   }
   return bp;
@@ -491,6 +492,21 @@ function ensureService(
   return svc;
 }
 
+function removeLabelsFromService(
+  services: Record<string, unknown>,
+  serviceName: string,
+  removePrefixes: string[],
+) {
+  if (!serviceName || !isPlainObject(services[serviceName])) return;
+  const svc = services[serviceName] as Record<string, unknown>;
+  const existing = removePangolinLabels(labelsToArray(svc.labels), removePrefixes);
+  if (existing.length > 0) {
+    svc.labels = existing;
+  } else {
+    delete svc.labels;
+  }
+}
+
 function applyLabelsToService(
   services: Record<string, unknown>,
   serviceName: string,
@@ -522,6 +538,10 @@ export function toComposeYaml(bp: Blueprint): string {
   const services = isPlainObject(baseDoc.services)
     ? (baseDoc.services as Record<string, unknown>)
     : ({} as Record<string, unknown>);
+
+  Object.keys(services).forEach((serviceName) => {
+    removeLabelsFromService(services, serviceName, ["pangolin.public-resources."]);
+  });
 
   for (const r of bp.resources) {
     applyLabelsToService(

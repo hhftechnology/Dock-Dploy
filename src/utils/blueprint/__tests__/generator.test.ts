@@ -35,6 +35,19 @@ services:
     expect(bp.resources[1].image).toBe("postgres:16");
   });
 
+  it("keeps uniquified blueprint names and subdomains aligned", () => {
+    const bp = fromCompose(`services:
+  app:
+    image: nginx
+  app_:
+    image: nginx
+`);
+    expect(bp.resources[0].blueprintName).toBe("app");
+    expect(bp.resources[0].subdomain).toBe("app");
+    expect(bp.resources[1].blueprintName).toBe("app-2");
+    expect(bp.resources[1].subdomain).toBe("app-2");
+  });
+
   it("uses an https target method for port 443 / 8443", () => {
     const bp = fromCompose(`services:
   s:
@@ -102,6 +115,34 @@ describe("toComposeYaml", () => {
     expect(services.worker).toBeTruthy();
     expect(services.worker.labels).toBeUndefined();
     expect(String(yaml)).not.toContain("pangolin.public-resources.worker");
+  });
+
+  it("removes Pangolin labels from resources disabled after re-import", () => {
+    const bp = fromCompose(
+      `services:
+  web:
+    image: nginx
+    ports:
+      - "80"
+  worker:
+    image: busybox
+    ports:
+      - "8080"
+`,
+      "example.com",
+    );
+    const yaml = toComposeYaml(bp);
+    expect(yaml).toContain("pangolin.public-resources.web");
+    expect(yaml).toContain("pangolin.public-resources.worker");
+
+    const bp2 = fromCompose(yaml, "example.com");
+    bp2.resources = bp2.resources.filter(
+      (resource) => resource.serviceContainerName !== "worker",
+    );
+    const finalYaml = toComposeYaml(bp2);
+
+    expect(finalYaml).toContain("pangolin.public-resources.web");
+    expect(finalYaml).not.toContain("pangolin.public-resources.worker");
   });
 
   it("adds the external pangolin network block with a literal name", () => {

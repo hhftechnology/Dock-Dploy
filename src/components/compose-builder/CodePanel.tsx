@@ -77,8 +77,14 @@ export function CodePanel({
     [output],
   );
 
+  const activeValidationError =
+    validationError ||
+    (!validatedOutput.ok ? formatValidationIssues(validatedOutput.issues) : null);
+  const canCopy = validatedOutput.ok && !activeValidationError;
+  const statusKind: "ok" | "err" = activeValidationError ? "err" : "ok";
+
   const handleCopy = async () => {
-    if (!validatedOutput.ok) return;
+    if (!canCopy) return;
     try {
       await copyToClipboard(validatedOutput.output);
       setCopied(true);
@@ -87,11 +93,6 @@ export function CodePanel({
       // ignore - browser may have denied clipboard access
     }
   };
-
-  const activeValidationError =
-    validationError ||
-    (!validatedOutput.ok ? formatValidationIssues(validatedOutput.issues) : null);
-  const statusKind: "ok" | "err" = activeValidationError ? "err" : "ok";
 
   return (
     <section className="code-col">
@@ -140,7 +141,7 @@ export function CodePanel({
           type="button"
           className="code-copy"
           onClick={handleCopy}
-          disabled={!validatedOutput.ok}
+          disabled={!canCopy}
           aria-label="Copy to clipboard"
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}

@@ -53,6 +53,23 @@ jobs:
     ).toBe(true);
   });
 
+  it("rejects GitHub Actions output without a scheduled cron trigger", () => {
+    expect(
+      validateSchedulerOutput(
+        "github-actions",
+        `name: Manual
+on:
+  workflow_dispatch:
+jobs:
+  scheduled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+`,
+      ).ok,
+    ).toBe(false);
+  });
+
   it("rejects invalid generated config outputs", () => {
     expect(validateCustomYaml("valid: true").ok).toBe(true);
     expect(validateHomepageOutput("services:\n  - Name: Bad\n").ok).toBe(false);

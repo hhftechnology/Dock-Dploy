@@ -16,6 +16,7 @@ import { TemplateDetailModal } from "../components/templates/TemplateDetailModal
 import { Field, ValidatedInput } from "../components/compose-builder/ServiceForm/Field";
 import { useTemplateStore } from "../hooks/useTemplateStore";
 import {
+  defaultAuth,
   defaultBlueprint,
   defaultHealthcheck,
   defaultPrivateResource,
@@ -54,6 +55,25 @@ export const Route = createFileRoute("/blueprint-builder")({
 });
 
 type OutputTab = "compose" | "env";
+
+function nextUnusedSuffix(prefix: string, keys: string[]): number {
+  const used = new Set<number>();
+  const re = new RegExp(`^${prefix}-(\\d+)$`);
+  keys.forEach((key) => {
+    const match = re.exec(key);
+    if (!match) return;
+    const suffix = Number(match[1]);
+    if (Number.isInteger(suffix) && suffix > 0) used.add(suffix);
+  });
+
+  let suffix = 1;
+  while (used.has(suffix)) suffix += 1;
+  return suffix;
+}
+
+function stripTargetMethod(target: BlueprintTarget): BlueprintTarget {
+  return { ...target, method: undefined };
+}
 
 function BlueprintBuilderRoute() {
   const navigate = useNavigate();
@@ -139,18 +159,26 @@ function BlueprintBuilderRoute() {
   );
 
   const addPrivateResource = useCallback(() => {
-    setBlueprint((bp) => ({
-      ...bp,
-      privateResources: [
-        ...(bp.privateResources ?? []),
-        {
-          ...defaultPrivateResource(defaultLabelService),
-          key: `private-${(bp.privateResources?.length ?? 0) + 1}`,
-          name: `Private ${(bp.privateResources?.length ?? 0) + 1}`,
-          alias: `private-${(bp.privateResources?.length ?? 0) + 1}`,
-        },
-      ],
-    }));
+    setBlueprint((bp) => {
+      const privateResources = bp.privateResources ?? [];
+      const suffix = nextUnusedSuffix(
+        "private",
+        privateResources.map((resource) => resource.key),
+      );
+      const key = `private-${suffix}`;
+      return {
+        ...bp,
+        privateResources: [
+          ...privateResources,
+          {
+            ...defaultPrivateResource(defaultLabelService),
+            key,
+            name: `Private ${suffix}`,
+            alias: key,
+          },
+        ],
+      };
+    });
   }, [defaultLabelService]);
 
   const removePrivateResource = useCallback((idx: number) => {
@@ -169,17 +197,24 @@ function BlueprintBuilderRoute() {
   }, []);
 
   const addSite = useCallback(() => {
-    setBlueprint((bp) => ({
-      ...bp,
-      sites: [
-        ...(bp.sites ?? []),
-        {
-          ...defaultSite(defaultLabelService),
-          key: `site-${(bp.sites?.length ?? 0) + 1}`,
-          name: `Site ${(bp.sites?.length ?? 0) + 1}`,
-        },
-      ],
-    }));
+    setBlueprint((bp) => {
+      const sites = bp.sites ?? [];
+      const suffix = nextUnusedSuffix(
+        "site",
+        sites.map((site) => site.key),
+      );
+      return {
+        ...bp,
+        sites: [
+          ...sites,
+          {
+            ...defaultSite(defaultLabelService),
+            key: `site-${suffix}`,
+            name: `Site ${suffix}`,
+          },
+        ],
+      };
+    });
   }, [defaultLabelService]);
 
   const removeSite = useCallback((idx: number) => {
@@ -202,6 +237,7 @@ function BlueprintBuilderRoute() {
           suffix += 1;
         }
         resource.blueprintName = nextName;
+        resource.subdomain = nextName;
         return { ...bp, resources: [...bp.resources, resource] };
       });
       setSelectedIdx(blueprint.resources.length);
@@ -868,6 +904,12 @@ function ResourceForm({
                 onChange({
                   protocol,
                   proxyPort: protocol === "http" ? undefined : (resource.proxyPort ?? resource.servicePort),
+                  ...(protocol !== "http"
+                    ? {
+                        auth: defaultAuth(),
+                        extraTargets: resource.extraTargets.map(stripTargetMethod),
+                      }
+                    : {}),
                 });
               }}
             >

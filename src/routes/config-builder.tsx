@@ -34,7 +34,6 @@ function ConfigBuilderRoute() {
   const [config, setConfig] = useState<HomepageConfigState>({ items: [] });
   const [customOutput, setCustomOutput] = useState<string>("");
   const [currentItem, setCurrentItem] = useState<ConfigItemInput>(blankItem());
-  const [itemSubmitted, setItemSubmitted] = useState(false);
 
   const generateHomepageConfig = useCallback(
     (items: ConfigItem[]): string => {
@@ -74,12 +73,10 @@ function ConfigBuilderRoute() {
   }, [configType, config.items, customOutput, generateHomepageConfig, outputValidation]);
 
   const addItem = useCallback(() => {
-    setItemSubmitted(true);
     const validation = validateConfigItem(currentItem);
     if (!validation.ok || !validation.data) return;
     setConfig({ items: [...config.items, validation.data] });
     setCurrentItem(blankItem());
-    setItemSubmitted(false);
   }, [currentItem, config.items]);
 
   const removeItem = useCallback(
@@ -96,10 +93,8 @@ function ConfigBuilderRoute() {
   };
 
   const fieldError = (path: string) =>
-    itemSubmitted
-      ? currentItemValidation.issues.find((issue) => issue.path === path)
-          ?.message ?? null
-      : null;
+    currentItemValidation.issues.find((issue) => issue.path === path)?.message ??
+    null;
 
   const customYamlError =
     configType === "custom" && !outputValidation.ok

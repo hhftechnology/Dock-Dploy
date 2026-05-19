@@ -161,7 +161,23 @@ export function validateSchedulerOutput(
   if (type === "github-actions") {
     try {
       const parsed = yaml.load(output) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== "object" || !("on" in parsed)) {
+      const onValue =
+        parsed && typeof parsed === "object" ? parsed.on : undefined;
+      const schedule =
+        onValue && typeof onValue === "object" && !Array.isArray(onValue)
+          ? (onValue as Record<string, unknown>).schedule
+          : undefined;
+      const hasScheduleCron =
+        Array.isArray(schedule) &&
+        schedule.some(
+          (item) =>
+            item !== null &&
+            typeof item === "object" &&
+            !Array.isArray(item) &&
+            typeof (item as Record<string, unknown>).cron === "string",
+        );
+
+      if (!hasScheduleCron) {
         issues.push(
           validationError(
             "scheduler.output",
