@@ -6,6 +6,7 @@
 // Returns a list of human-readable error strings (empty = clean).
 
 import jsyaml from "js-yaml";
+import { sanitizeComposeVersion } from "../compose-version";
 import type { ServiceConfig } from "../../types/compose";
 import {
   parseComposeService,
@@ -31,9 +32,17 @@ export function validateComposeYaml(yaml: string): ComposeValidationResult {
     return { ok: false, errors: ["Compose file is empty"] };
   }
 
+  const sanitized = sanitizeComposeVersion(yaml).content;
+  if (!sanitized.trim()) {
+    return {
+      ok: false,
+      errors: ["Compose file must declare at least one service under `services:`"],
+    };
+  }
+
   let parsed: unknown;
   try {
-    parsed = jsyaml.load(yaml);
+    parsed = jsyaml.load(sanitized);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, errors: [`Invalid YAML: ${msg}`] };
@@ -57,7 +66,7 @@ export function validateComposeYaml(yaml: string): ComposeValidationResult {
   let volumesParsed: ReturnType<typeof parseComposeService>["volumes"] = [];
 
   try {
-    const result = parseComposeTemplate(yaml);
+    const result = parseComposeTemplate(sanitized);
     const allNetworks = isPlainObject((parsed as Record<string, unknown>).networks)
       ? ((parsed as Record<string, unknown>).networks as Record<string, unknown>)
       : {};

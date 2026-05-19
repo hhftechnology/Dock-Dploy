@@ -14,6 +14,7 @@ import { GithubIcon as Github } from "../icons/BrandIcons";
 import { copyToClipboard, downloadFile } from "../../utils/clipboard";
 import { useToast } from "../ui/toast";
 import { validateComposeYaml } from "../../utils/validation/compose";
+import { sanitizeComposeVersion } from "../../utils/compose-version";
 
 export interface TemplateDetails {
   id: string;
@@ -28,6 +29,7 @@ export interface TemplateDetails {
     docs?: string;
   };
   composeContent?: string;
+  composeVersionRemoved?: boolean;
 }
 
 export interface TemplateDetailModalProps {
@@ -49,18 +51,25 @@ export function TemplateDetailModal({
   const [importing, setImporting] = useState(false);
   const { toast } = useToast();
 
+  const sanitizedCompose = useMemo(() => {
+    if (!template?.composeContent) return { content: "", removed: false };
+    return sanitizeComposeVersion(template.composeContent);
+  }, [template?.composeContent]);
+
+  const composeContent = sanitizedCompose.content;
+
   // Pre-import validation: parse the compose YAML and flag any problems
   // before the user can pull it into their workspace.
   const validation = useMemo(() => {
-    if (!template?.composeContent) return { ok: true, errors: [] as string[] };
-    return validateComposeYaml(template.composeContent);
-  }, [template?.composeContent]);
+    if (!composeContent) return { ok: true, errors: [] as string[] };
+    return validateComposeYaml(composeContent);
+  }, [composeContent]);
 
   const handleCopy = async () => {
-    if (!template?.composeContent) return;
+    if (!template || !composeContent) return;
 
     try {
-      await copyToClipboard(template.composeContent);
+      await copyToClipboard(composeContent);
       toast({
         title: "Copied to clipboard",
         description: "Docker Compose content has been copied",
@@ -76,11 +85,11 @@ export function TemplateDetailModal({
   };
 
   const handleDownload = () => {
-    if (!template?.composeContent) return;
+    if (!template || !composeContent) return;
 
     try {
       downloadFile(
-        template.composeContent,
+        composeContent,
         `${template.name.toLowerCase().replace(/\s+/g, "-")}-compose.yml`,
         "text/yaml"
       );
@@ -111,7 +120,7 @@ export function TemplateDetailModal({
 
     setImporting(true);
     try {
-      await onImport(template);
+      await onImport({ ...template, composeContent });
       toast({
         title: "Template imported",
         description: `${template.name} has been imported successfully`,
@@ -287,12 +296,12 @@ export function TemplateDetailModal({
             </TabsContent>
 
             <TabsContent value="compose" className="py-4">
-              {template.composeContent ? (
+              {composeContent ? (
                 <div className="space-y-4">
                   <div className="border rounded-lg overflow-hidden">
                     <div className="editor-h-lg dialog-h-short">
                       <CodeEditor
-                        content={template.composeContent}
+                        content={composeContent}
                         onContentChange={() => {}}
                         height={undefined}
                         width={undefined}

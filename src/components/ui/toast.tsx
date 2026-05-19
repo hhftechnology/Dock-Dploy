@@ -70,16 +70,16 @@ function ToastContainer() {
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
   const variantStyles = {
-    default: "bg-background border-border",
-    success: "bg-green-500/10 border-green-500/50 text-green-700 dark:text-green-400",
-    error: "bg-red-500/10 border-red-500/50 text-red-700 dark:text-red-400",
-    warning: "bg-yellow-500/10 border-yellow-500/50 text-yellow-700 dark:text-yellow-400",
+    default: "bg-background border-border text-foreground",
+    success: "bg-emerald-50 border-emerald-600 text-emerald-950 dark:bg-emerald-950 dark:border-emerald-400 dark:text-emerald-50",
+    error: "bg-red-50 border-red-600 text-red-950 dark:bg-red-950 dark:border-red-400 dark:text-red-50",
+    warning: "bg-amber-50 border-amber-600 text-amber-950 dark:bg-amber-950 dark:border-amber-400 dark:text-amber-50",
   }
 
   return (
     <div
       className={cn(
-        "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-4 pr-8 shadow-lg transition-all",
+        "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-4 pr-8 shadow-2xl transition-all",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full",
         "data-[state=open]:slide-in-from-bottom-full data-[state=open]:sm:slide-in-from-top-full",
@@ -92,7 +92,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
           <div className="text-sm font-semibold">{toast.title}</div>
         )}
         {toast.description && (
-          <div className="text-sm opacity-90">{toast.description}</div>
+          <div className="text-sm">{toast.description}</div>
         )}
       </div>
       {toast.action}

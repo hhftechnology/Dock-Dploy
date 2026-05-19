@@ -1,4 +1,5 @@
 import jsyaml from "js-yaml";
+import { sanitizeComposeVersion } from "./compose-version";
 import type { ServiceConfig, NetworkConfig, VolumeConfig } from "../types/compose";
 import { defaultService } from "./default-configs";
 
@@ -375,7 +376,7 @@ export function parseComposeTemplate(composeContent: string): {
 } {
   let doc: any;
   try {
-    doc = jsyaml.load(composeContent);
+    doc = jsyaml.load(sanitizeComposeVersion(composeContent).content);
   } catch (err: any) {
     throw new Error(`Invalid YAML format: ${err.message}`, { cause: err });
   }

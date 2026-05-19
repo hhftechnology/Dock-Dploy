@@ -1,21 +1,34 @@
-import { useCallback, useState } from "react";
+import {
+  useCallback,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import {
+  validateTemplateDetails,
+  validateTemplateMetaList,
+  type TemplateDetails,
+  type TemplateMeta,
+} from "../utils/validation/templates";
+import { formatValidationIssues } from "../utils/validation/issues";
+import { sanitizeComposeVersion } from "../utils/compose-version";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Template = any;
+type Template = TemplateMeta;
+type SelectedTemplate = TemplateDetails | null;
 
 export interface UseTemplateStoreReturn {
   templateStoreOpen: boolean;
   setTemplateStoreOpen: (open: boolean) => void;
   templates: Template[];
-  setTemplates: React.Dispatch<React.SetStateAction<Template[]>>;
+  setTemplates: Dispatch<SetStateAction<Template[]>>;
   templateLoading: boolean;
   setTemplateLoading: (loading: boolean) => void;
   templateError: string | null;
   setTemplateError: (error: string | null) => void;
   templateSearch: string;
   setTemplateSearch: (search: string) => void;
-  selectedTemplate: Template;
-  setSelectedTemplate: (template: Template) => void;
+  selectedTemplate: SelectedTemplate;
+  setSelectedTemplate: (template: SelectedTemplate) => void;
   templateDetailOpen: boolean;
   setTemplateDetailOpen: (open: boolean) => void;
   templateDetailTab: "overview" | "compose";
@@ -23,7 +36,7 @@ export interface UseTemplateStoreReturn {
   templateCache: Template[];
   templateCacheTimestamp: number | null;
   fetchTemplatesFromGitHub: (backgroundUpdate?: boolean) => Promise<void>;
-  fetchTemplateDetails: (templateId: string) => Promise<Template>;
+  fetchTemplateDetails: (templateId: string) => Promise<TemplateDetails>;
   refreshTemplateStore: () => void;
 }
 
@@ -40,9 +53,17 @@ function readCache(): { templates: Template[]; ts: number | null } {
   try {
     const t = localStorage.getItem(CACHE_KEY);
     const ts = localStorage.getItem(CACHE_TS_KEY);
+    const parsed = t ? JSON.parse(t) : [];
+    const validation = validateTemplateMetaList(parsed);
+    if (!validation.ok || !validation.data) {
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(CACHE_TS_KEY);
+      return { templates: [], ts: null };
+    }
+    const parsedTs = ts ? parseInt(ts, 10) : null;
     return {
-      templates: t ? JSON.parse(t) : [],
-      ts: ts ? parseInt(ts, 10) : null,
+      templates: validation.data,
+      ts: Number.isFinite(parsedTs) ? parsedTs : null,
     };
   } catch {
     return { templates: [], ts: null };
@@ -56,7 +77,7 @@ export function useTemplateStore(): UseTemplateStoreReturn {
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateSearch, setTemplateSearch] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState<Template>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<SelectedTemplate>(null);
   const [templateDetailOpen, setTemplateDetailOpen] = useState(false);
   const [templateDetailTab, setTemplateDetailTab] = useState<
     "overview" | "compose"
@@ -78,13 +99,19 @@ export function useTemplateStore(): UseTemplateStoreReturn {
         if (!metaResponse.ok) {
           throw new Error(`Failed to fetch templates: ${metaResponse.statusText}`);
         }
-        const templatesMeta: Template[] = await metaResponse.json();
-        setTemplates(templatesMeta);
-        setTemplateCache(templatesMeta);
+        const templatesMeta = await metaResponse.json();
+        const validation = validateTemplateMetaList(templatesMeta);
+        if (!validation.ok || !validation.data) {
+          throw new Error(
+            `Template metadata failed validation: ${formatValidationIssues(validation.issues)}`,
+          );
+        }
+        setTemplates(validation.data);
+        setTemplateCache(validation.data);
         const now = Date.now();
         setTemplateCacheTimestamp(now);
         try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(templatesMeta));
+          localStorage.setItem(CACHE_KEY, JSON.stringify(validation.data));
           localStorage.setItem(CACHE_TS_KEY, String(now));
         } catch {
           // localStorage may be disabled; non-fatal.
@@ -93,7 +120,6 @@ export function useTemplateStore(): UseTemplateStoreReturn {
       } catch (error: unknown) {
         const msg =
           error instanceof Error ? error.message : "Failed to load templates";
-        // eslint-disable-next-line no-console
         console.error("Error fetching templates:", error);
         if (!backgroundUpdate) {
           setTemplateLoading(false);
@@ -104,7 +130,6 @@ export function useTemplateStore(): UseTemplateStoreReturn {
     [],
   );
 
-  // Open-the-store side effect handled in the setter — event-driven, not useEffect.
   const setTemplateStoreOpen = useCallback(
     (open: boolean) => {
       setTemplateStoreOpenState(open);
@@ -118,7 +143,6 @@ export function useTemplateStore(): UseTemplateStoreReturn {
         setTemplates(templateCache);
         setTemplateLoading(false);
         setTemplateError(null);
-        // Background refresh — fire and forget.
         void fetchTemplatesFromGitHub(true);
         return;
       }
@@ -128,7 +152,7 @@ export function useTemplateStore(): UseTemplateStoreReturn {
   );
 
   const fetchTemplateDetails = useCallback(
-    async (templateId: string): Promise<Template> => {
+    async (templateId: string): Promise<TemplateDetails> => {
       const template = templates.find((t) => t.id === templateId);
       if (!template) throw new Error(`Template ${templateId} not found`);
 
@@ -141,13 +165,26 @@ export function useTemplateStore(): UseTemplateStoreReturn {
             `Failed to fetch docker-compose.yml: ${composeResponse.statusText}`,
           );
         }
-        const composeContent = await composeResponse.text();
+        const rawComposeContent = await composeResponse.text();
+        const sanitizedCompose = sanitizeComposeVersion(rawComposeContent);
+        const composeContent = sanitizedCompose.content;
         const logoUrl = template.logo
           ? `${GITHUB_RAW_BASE}/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${basePath}/${template.logo}`
-          : null;
-        return { ...template, composeContent, logoUrl };
+          : undefined;
+        const details = {
+          ...template,
+          composeContent,
+          composeVersionRemoved: sanitizedCompose.removed,
+          logoUrl,
+        };
+        const validation = validateTemplateDetails(details);
+        if (!validation.ok || !validation.data) {
+          throw new Error(
+            `Template details failed validation: ${formatValidationIssues(validation.issues)}`,
+          );
+        }
+        return validation.data;
       } catch (error: unknown) {
-        // eslint-disable-next-line no-console
         console.error(
           `Error fetching template details for ${templateId}:`,
           error,

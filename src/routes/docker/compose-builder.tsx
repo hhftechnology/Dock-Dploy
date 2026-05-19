@@ -11,6 +11,7 @@ import { VolumeForm } from "../../components/compose-builder/VolumeForm";
 import { TemplateStoreModal } from "../../components/templates/TemplateStoreModal";
 import { TemplateDetailModal } from "../../components/templates/TemplateDetailModal";
 import { ConversionDialog } from "../../components/ConversionDialog";
+import { useToast } from "../../components/ui/toast";
 
 import { useSelectionState } from "../../hooks/useSelectionState";
 import { useVpnConfig } from "../../hooks/useVpnConfig";
@@ -58,6 +59,7 @@ type Any = any;
 
 function ComposeBuilderRoute() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [services, setServices] = useState<ServiceConfig[]>([defaultService()]);
 
   const {
@@ -112,6 +114,8 @@ function ComposeBuilderRoute() {
 
   const conversionDialog = useConversionDialog({
     services,
+    networks,
+    volumes,
     selectedIdx,
     yaml,
     vpnConfig,
@@ -407,22 +411,17 @@ function ComposeBuilderRoute() {
   }
 
   function removeService(idx: number) {
+    const nextLength = Math.max(services.length - 1, 0);
     setServices((prev) => {
       if (idx < 0 || idx >= prev.length) return prev;
       const next = [...prev];
       next.splice(idx, 1);
-      // Invariant: always keep at least one service so the ServiceForm has
-      // something to render. Removing the last row replaces it with a fresh
-      // unnamed default.
-      if (next.length === 0) next.push(defaultService());
       return next;
     });
 
     if (selectedType === "service" && selectedIdx !== null) {
       if (selectedIdx === idx) {
-        // Fall back to the previous row, or 0 when the deleted row was
-        // replaced by a fresh default.
-        selectService(Math.max(0, idx - 1));
+        selectService(nextLength > 0 ? Math.min(idx, nextLength - 1) : null);
       } else if (selectedIdx > idx) {
         selectService(selectedIdx - 1);
       }
@@ -432,28 +431,35 @@ function ComposeBuilderRoute() {
   // ---------------- template import ----------------
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function importComposeService(svc: any, allNetworks: any, allVolumes: any) {
-    const parsed = parseComposeService(svc, allNetworks, allVolumes);
-    const filtered = services.filter((s) => s.name && s.name.trim() !== "");
-    const idx = filtered.length;
-    setServices((prev) => {
-      const f = prev.filter((s) => s.name && s.name.trim() !== "");
-      return [...f, parsed.service];
-    });
-    if (parsed.networks.length > 0) bulkAddNetworks(parsed.networks);
-    if (parsed.volumes.length > 0) bulkAddVolumes(parsed.volumes);
-    selectService(idx);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function importTemplate(template: any) {
     try {
       const parsed = parseComposeTemplate(template.composeContent);
-      for (const svc of parsed.services) {
-        importComposeService(svc, parsed.networks, parsed.volumes);
-      }
+      const parsedServices = parsed.services.map((svc) =>
+        parseComposeService(svc, parsed.networks, parsed.volumes),
+      );
+      const importedServices = parsedServices.map((item) => item.service);
+      const firstImportedIdx = services.filter(
+        (service) => service.name && service.name.trim() !== "",
+      ).length;
+
+      setServices((prev) => {
+        const existing = prev.filter(
+          (service) => service.name && service.name.trim() !== "",
+        );
+        const next = [...existing, ...importedServices];
+        return next.length > 0 ? next : [defaultService()];
+      });
+
+      const importedNetworks = parsedServices.flatMap((item) => item.networks);
+      const importedVolumes = parsedServices.flatMap((item) => item.volumes);
+      if (importedNetworks.length > 0) bulkAddNetworks(importedNetworks);
+      if (importedVolumes.length > 0) bulkAddVolumes(importedVolumes);
+
+      selectService(importedServices.length > 0 ? firstImportedIdx : null);
       templateStore.setTemplateDetailOpen(false);
       templateStore.setTemplateStoreOpen(false);
+      templateStore.setSelectedTemplate(null);
+      templateStore.setTemplateDetailTab("overview");
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line no-console
@@ -467,10 +473,10 @@ function ComposeBuilderRoute() {
   const currentService =
     typeof selectedIdx === "number" && services[selectedIdx]
       ? services[selectedIdx]
-      : services[0];
+      : null;
 
   const formApi: ServiceFormApi = {
-    service: currentService,
+    service: currentService ?? defaultService(),
     restartOptions: RESTART_OPTIONS,
     updateServiceField,
     updatePortField,
@@ -526,7 +532,7 @@ function ComposeBuilderRoute() {
     }
   };
 
-  const showServiceForm = selectedType === "service";
+  const showServiceForm = selectedType === "service" && currentService !== null;
   const showNetworkForm =
     selectedType === "network" &&
     selectedNetworkIdx !== null &&
@@ -653,6 +659,14 @@ function ComposeBuilderRoute() {
               );
               templateStore.setSelectedTemplate(details);
               templateStore.setTemplateDetailOpen(true);
+              if (details.composeVersionRemoved) {
+                toast({
+                  title: "Obsolete Compose version removed",
+                  description: "The top-level version field is obsolete in Docker Compose V2 and was removed from this template.",
+                  variant: "warning",
+                  duration: 4500,
+                });
+              }
             } catch (e) {
               // eslint-disable-next-line no-console
               console.error(e);
@@ -681,6 +695,7 @@ function ComposeBuilderRoute() {
         onOpenChange={conversionDialog.setConversionDialogOpen}
         conversionType={conversionDialog.conversionType || ""}
         conversionOutput={conversionDialog.conversionOutput}
+        conversionValid={conversionDialog.conversionValid}
       />
     </div>
   );

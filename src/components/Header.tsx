@@ -86,7 +86,7 @@ export function Header({ onOpenMarket }: HeaderProps) {
           </a>
           <a
             className="icon-btn"
-            href="https://github.com/hhftechnologies/Dock-Dploy"
+            href="https://github.com/hhftechnology/Dock-Dploy"
             target="_blank"
             rel="noreferrer"
             aria-label="GitHub"

@@ -6,15 +6,14 @@ import type {
   VolumeConfig,
 } from "../../types/compose";
 import type { VPNConfig } from "../../types/vpn-configs";
-import {
-  convertToDockerRun,
-  convertToSystemd,
-  generateKomodoToml,
-  generateEnvFile,
-} from "../../utils/converters";
 import { copyToClipboard } from "../../utils/clipboard";
+import {
+  createValidatedComposeOutput,
+  type ComposeOutputFormat,
+} from "../../utils/validation/outputs";
+import { formatValidationIssues } from "../../utils/validation/issues";
 
-type FormatId = "compose" | "docker-run" | "systemd" | "env" | "komodo";
+type FormatId = Exclude<ComposeOutputFormat, "redact">;
 
 interface FormatTab {
   id: FormatId;
@@ -44,6 +43,8 @@ export interface CodePanelProps {
 export function CodePanel({
   yaml,
   services,
+  networks,
+  volumes,
   vpn,
   validationError,
   validationSuccess: _validationSuccess,
@@ -52,22 +53,21 @@ export function CodePanel({
   const [format, setFormat] = useState<FormatId>("compose");
   const [copied, setCopied] = useState(false);
 
-  const output = useMemo(() => {
-    switch (format) {
-      case "compose":
-        return yaml;
-      case "docker-run":
-        return services.map((s) => convertToDockerRun(s)).join("\n\n");
-      case "systemd":
-        return services.map((s) => convertToSystemd(s)).join("\n\n");
-      case "env":
-        return generateEnvFile(services, vpn);
-      case "komodo":
-        return generateKomodoToml(yaml);
-      default:
-        return "";
-    }
-  }, [format, yaml, services, vpn]);
+  const validatedOutput = useMemo(
+    () =>
+      createValidatedComposeOutput(format, {
+        services,
+        networks,
+        volumes,
+        vpn,
+        yaml,
+      }),
+    [format, services, networks, volumes, vpn, yaml],
+  );
+
+  const output = validatedOutput.ok
+    ? validatedOutput.output
+    : invalidPanelOutput(validatedOutput.issues);
 
   const filename =
     FORMATS.find((f) => f.id === format)?.filename || "compose.yml";
@@ -77,17 +77,22 @@ export function CodePanel({
     [output],
   );
 
+  const activeValidationError =
+    validationError ||
+    (!validatedOutput.ok ? formatValidationIssues(validatedOutput.issues) : null);
+  const canCopy = validatedOutput.ok && !activeValidationError;
+  const statusKind: "ok" | "err" = activeValidationError ? "err" : "ok";
+
   const handleCopy = async () => {
+    if (!canCopy) return;
     try {
-      await copyToClipboard(output);
+      await copyToClipboard(validatedOutput.output);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      // ignore — browser may have denied clipboard access
+      // ignore - browser may have denied clipboard access
     }
   };
-
-  const statusKind: "ok" | "err" = validationError ? "err" : "ok";
 
   return (
     <section className="code-col">
@@ -102,7 +107,7 @@ export function CodePanel({
           onClick={onValidate}
           title="Validate & reformat"
         >
-          {validationError ? (
+          {activeValidationError ? (
             <>
               <AlertCircle size={14} />
               Re-validate
@@ -136,6 +141,7 @@ export function CodePanel({
           type="button"
           className="code-copy"
           onClick={handleCopy}
+          disabled={!canCopy}
           aria-label="Copy to clipboard"
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -144,11 +150,11 @@ export function CodePanel({
         <CodeView text={output} />
         <div className="code-statusbar">
           <span
-            className={"status-tag" + (validationError ? " err" : "")}
+            className={"status-tag" + (activeValidationError ? " err" : "")}
             aria-live="polite"
           >
             <span className={"status-dot " + statusKind} aria-hidden />
-            {validationError ? validationError : "Valid"}
+            {activeValidationError ? activeValidationError : "Valid"}
           </span>
           <span className="status-mono">
             {lineCount} {lineCount === 1 ? "line" : "lines"} · UTF-8 · LF
@@ -160,10 +166,20 @@ export function CodePanel({
   );
 }
 
+function invalidPanelOutput(issues: { path: string; message: string }[]): string {
+  return [
+    "# Output blocked by validation",
+    ...issues.map((issue) => {
+      const label = issue.path ? `${issue.path}: ` : "";
+      return `# ${label}${issue.message}`;
+    }),
+  ].join("\n");
+}
+
 /**
  * Lightweight syntax-aware preview. Uses simple regex to highlight YAML keys
  * and values without pulling in CodeMirror (which is reserved for the
- * editable surfaces — TemplateDetailModal and the convert dialog).
+ * editable surfaces - TemplateDetailModal and the convert dialog).
  */
 function CodeView({ text }: { text: string }) {
   const lines = useMemo(() => text.split("\n"), [text]);

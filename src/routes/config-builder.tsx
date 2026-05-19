@@ -5,21 +5,24 @@ import { Trash2 } from "lucide-react";
 
 import { SetupSidebar, type BuilderView } from "../components/SetupSidebar";
 import { Field } from "../components/compose-builder/ServiceForm/Field";
+import {
+  validateConfigItem,
+  validateCustomYaml,
+  validateHomepageConfig,
+  validateHomepageOutput,
+  type ConfigItem,
+  type ConfigItemInput,
+} from "../utils/validation/config";
+import {
+  formatValidationIssues,
+  type ValidationIssue,
+} from "../utils/validation/issues";
 
 export const Route = createFileRoute("/config-builder")({
   component: ConfigBuilderRoute,
 });
 
-interface ConfigItem {
-  name: string;
-  description: string;
-  icon: string;
-  url: string;
-  category?: string;
-  tags?: string[];
-}
-
-interface HomepageConfig {
+interface HomepageConfigState {
   items: ConfigItem[];
 }
 
@@ -28,18 +31,17 @@ type ConfigType = "homepage" | "custom";
 function ConfigBuilderRoute() {
   const navigate = useNavigate();
   const [configType, setConfigType] = useState<ConfigType>("homepage");
-  const [config, setConfig] = useState<HomepageConfig>({ items: [] });
+  const [config, setConfig] = useState<HomepageConfigState>({ items: [] });
   const [customOutput, setCustomOutput] = useState<string>("");
-  const [currentItem, setCurrentItem] = useState<ConfigItem>(blankItem());
+  const [currentItem, setCurrentItem] = useState<ConfigItemInput>(blankItem());
 
   const generateHomepageConfig = useCallback(
     (items: ConfigItem[]): string => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const obj: any = {
+      const obj = {
         services: items.map((item) => ({
           Name: item.name,
-          Description: item.description,
-          Icon: item.icon,
+          ...(item.description && { Description: item.description }),
+          ...(item.icon && { Icon: item.icon }),
           URL: item.url,
           ...(item.category && { Category: item.category }),
           ...(item.tags && item.tags.length > 0 && { Tags: item.tags }),
@@ -50,14 +52,30 @@ function ConfigBuilderRoute() {
     [],
   );
 
+  const currentItemValidation = useMemo(
+    () => validateConfigItem(currentItem),
+    [currentItem],
+  );
+
+  const outputValidation = useMemo(() => {
+    if (configType === "custom") return validateCustomYaml(customOutput);
+    const configResult = validateHomepageConfig(config);
+    if (!configResult.ok) return configResult;
+    return validateHomepageOutput(generateHomepageConfig(config.items));
+  }, [configType, customOutput, config, generateHomepageConfig]);
+
   const output = useMemo(() => {
+    if (!outputValidation.ok) {
+      return invalidBuilderOutput(outputValidation.issues);
+    }
     if (configType === "homepage") return generateHomepageConfig(config.items);
     return customOutput;
-  }, [configType, config.items, customOutput, generateHomepageConfig]);
+  }, [configType, config.items, customOutput, generateHomepageConfig, outputValidation]);
 
   const addItem = useCallback(() => {
-    if (!currentItem.name || !currentItem.url) return;
-    setConfig({ items: [...config.items, { ...currentItem }] });
+    const validation = validateConfigItem(currentItem);
+    if (!validation.ok || !validation.data) return;
+    setConfig({ items: [...config.items, validation.data] });
     setCurrentItem(blankItem());
   }, [currentItem, config.items]);
 
@@ -74,11 +92,19 @@ function ConfigBuilderRoute() {
     else if (view === "blueprint") navigate({ to: "/blueprint-builder" });
   };
 
+  const fieldError = (path: string) =>
+    currentItemValidation.issues.find((issue) => issue.path === path)?.message ??
+    null;
+
+  const customYamlError =
+    configType === "custom" && !outputValidation.ok
+      ? formatValidationIssues(outputValidation.issues)
+      : null;
+
   return (
     <div className="builder-shell builder-shell--three">
       <SetupSidebar view="config" onNav={handleNav} />
 
-      {/* Configuration column — type picker + item form */}
       <section className="config-col">
         <div className="col-head">
           <h2 className="col-head-title">
@@ -124,7 +150,7 @@ function ConfigBuilderRoute() {
               {config.items.length > 0 && (
                 <div className="service-list">
                   {config.items.map((item, idx) => (
-                    <div className="service-row" key={idx}>
+                    <div className="service-row" key={`${item.name}-${idx}`}>
                       <span className="status-dot ok" aria-hidden />
                       <span className="service-row-text">
                         <span className="service-row-name">{item.name}</span>
@@ -147,15 +173,14 @@ function ConfigBuilderRoute() {
           ) : (
             <div className="tab-content">
               <p className="tab-hint">
-                Paste any YAML or text-based config and the preview will mirror
-                it exactly.
+                Paste YAML or text-based config. YAML syntax is validated before
+                the output can be copied.
               </p>
             </div>
           )}
         </div>
       </section>
 
-      {/* Item / textarea editor */}
       <section className="service-col">
         <div className="col-head">
           <h2 className="col-head-title">
@@ -166,71 +191,80 @@ function ConfigBuilderRoute() {
 
         {configType === "homepage" ? (
           <div className="svc-tab">
-            <Field label="Name" required>
+            <Field label="Name" required error={fieldError("name")}>
               <input
                 className="input"
                 value={currentItem.name}
                 onChange={(e) =>
                   setCurrentItem({ ...currentItem, name: e.target.value })
                 }
+                aria-invalid={fieldError("name") ? true : undefined}
                 placeholder="Plex"
               />
             </Field>
-            <Field label="Description">
+            <Field label="Description" error={fieldError("description")}>
               <input
                 className="input"
-                value={currentItem.description}
+                value={currentItem.description || ""}
                 onChange={(e) =>
                   setCurrentItem({
                     ...currentItem,
                     description: e.target.value,
                   })
                 }
+                aria-invalid={fieldError("description") ? true : undefined}
                 placeholder="Media server"
               />
             </Field>
             <div className="svc-grid-2">
-              <Field label="Icon">
+              <Field label="Icon" error={fieldError("icon")}>
                 <input
                   className="input"
-                  value={currentItem.icon}
+                  value={currentItem.icon || ""}
                   onChange={(e) =>
                     setCurrentItem({ ...currentItem, icon: e.target.value })
                   }
+                  aria-invalid={fieldError("icon") ? true : undefined}
                   placeholder="plex.png"
                 />
               </Field>
-              <Field label="URL" required>
+              <Field label="URL" required error={fieldError("url")}>
                 <input
                   className="input"
                   value={currentItem.url}
                   onChange={(e) =>
                     setCurrentItem({ ...currentItem, url: e.target.value })
                   }
+                  aria-invalid={fieldError("url") ? true : undefined}
                   placeholder="https://plex.local"
                 />
               </Field>
             </div>
-            <Field label="Category">
+            <Field label="Category" error={fieldError("category")}>
               <input
                 className="input"
                 value={currentItem.category || ""}
                 onChange={(e) =>
                   setCurrentItem({ ...currentItem, category: e.target.value })
                 }
+                aria-invalid={fieldError("category") ? true : undefined}
                 placeholder="Media"
               />
             </Field>
-            <Field label="Tags" hint="Comma-separated">
+            <Field label="Tags" hint="Comma-separated" error={fieldError("tags")}>
               <input
                 className="input"
                 value={currentItem.tags?.join(", ") || ""}
                 onChange={(e) =>
                   setCurrentItem({
                     ...currentItem,
-                    tags: e.target.value.split(",").map((t) => t.trim()),
+                    tags: e.target.value
+                      .split(",")
+                      .map((t) => t.trim())
+                      .filter(Boolean),
                   })
                 }
+                aria-invalid={fieldError("tags") ? true : undefined}
                 placeholder="streaming, video"
               />
             </Field>
@@ -238,7 +272,7 @@ function ConfigBuilderRoute() {
               type="button"
               className="btn btn-primary btn-block"
               onClick={addItem}
-              disabled={!currentItem.name || !currentItem.url}
+              disabled={!currentItemValidation.ok}
             >
               + Add Item
             </button>
@@ -247,13 +281,15 @@ function ConfigBuilderRoute() {
           <div className="svc-tab">
             <Field
               label="Custom YAML"
-              hint="Anything goes — the preview shows it verbatim."
+              hint="The preview mirrors valid YAML exactly."
+              error={customYamlError}
             >
               <textarea
                 className="input"
                 rows={20}
                 value={customOutput}
                 onChange={(e) => setCustomOutput(e.target.value)}
+                aria-invalid={customYamlError ? true : undefined}
                 placeholder="key: value"
               />
             </Field>
@@ -261,7 +297,6 @@ function ConfigBuilderRoute() {
         )}
       </section>
 
-      {/* Output column */}
       <section className="code-col">
         <div className="code-head">
           <h2 className="code-title">
@@ -276,12 +311,17 @@ function ConfigBuilderRoute() {
         </div>
         <div className="code-window">
           <pre className="code-pre">
-            <code>{output || "# Output will appear here…"}</code>
+            <code>{output || "# Output will appear here..."}</code>
           </pre>
           <div className="code-statusbar">
-            <span className="status-tag">
-              <span className="status-dot ok" aria-hidden />
-              {output ? "OK" : "Empty"}
+            <span
+              className={"status-tag" + (!outputValidation.ok ? " err" : "")}
+            >
+              <span
+                className={"status-dot " + (outputValidation.ok ? "ok" : "err")}
+                aria-hidden
+              />
+              {outputValidation.ok ? "Valid" : "Blocked"}
             </span>
             <span className="status-mono">
               {output.split("\n").length} lines · UTF-8 · LF
@@ -296,7 +336,17 @@ function ConfigBuilderRoute() {
   );
 }
 
-function blankItem(): ConfigItem {
+function invalidBuilderOutput(issues: ValidationIssue[]): string {
+  return [
+    "# Output blocked by validation",
+    ...issues.map((issue) => {
+      const label = issue.path ? `${issue.path}: ` : "";
+      return `# ${label}${issue.message}`;
+    }),
+  ].join("\n");
+}
+
+function blankItem(): ConfigItemInput {
   return {
     name: "",
     description: "",
