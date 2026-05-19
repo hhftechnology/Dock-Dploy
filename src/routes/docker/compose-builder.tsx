@@ -11,6 +11,7 @@ import { VolumeForm } from "../../components/compose-builder/VolumeForm";
 import { TemplateStoreModal } from "../../components/templates/TemplateStoreModal";
 import { TemplateDetailModal } from "../../components/templates/TemplateDetailModal";
 import { ConversionDialog } from "../../components/ConversionDialog";
+import { useToast } from "../../components/ui/toast";
 
 import { useSelectionState } from "../../hooks/useSelectionState";
 import { useVpnConfig } from "../../hooks/useVpnConfig";
@@ -58,6 +59,7 @@ type Any = any;
 
 function ComposeBuilderRoute() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [services, setServices] = useState<ServiceConfig[]>([defaultService()]);
 
   const {
@@ -112,6 +114,8 @@ function ComposeBuilderRoute() {
 
   const conversionDialog = useConversionDialog({
     services,
+    networks,
+    volumes,
     selectedIdx,
     yaml,
     vpnConfig,
@@ -655,6 +659,14 @@ function ComposeBuilderRoute() {
               );
               templateStore.setSelectedTemplate(details);
               templateStore.setTemplateDetailOpen(true);
+              if (details.composeVersionRemoved) {
+                toast({
+                  title: "Obsolete Compose version removed",
+                  description: "The top-level version field is obsolete in Docker Compose V2 and was removed from this template.",
+                  variant: "warning",
+                  duration: 4500,
+                });
+              }
             } catch (e) {
               // eslint-disable-next-line no-console
               console.error(e);
@@ -683,6 +695,7 @@ function ComposeBuilderRoute() {
         onOpenChange={conversionDialog.setConversionDialogOpen}
         conversionType={conversionDialog.conversionType || ""}
         conversionOutput={conversionDialog.conversionOutput}
+        conversionValid={conversionDialog.conversionValid}
       />
     </div>
   );

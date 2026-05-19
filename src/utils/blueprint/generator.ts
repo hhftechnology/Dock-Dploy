@@ -8,6 +8,7 @@
 // `toEnvExample(bp)` returns the matching .env.example.
 
 import jsyaml from "js-yaml";
+import { sanitizeComposeVersion } from "../compose-version";
 import type {
   Blueprint,
   BlueprintAuth,
@@ -167,7 +168,7 @@ function uniqueBlueprintName(base: string, seen: Set<string>): string {
 export function fromCompose(yamlContent: string, baseDomain = ""): Blueprint {
   let doc: unknown;
   try {
-    doc = jsyaml.load(yamlContent);
+    doc = jsyaml.load(sanitizeComposeVersion(yamlContent).content);
   } catch {
     return defaultBlueprint();
   }
@@ -327,8 +328,7 @@ export function toComposeYaml(bp: Blueprint): string {
   };
   baseDoc.networks = networksTop;
 
-  // Always emit at least version key for clarity.
-  if (!baseDoc.version) baseDoc.version = "3.8";
+  delete baseDoc.version;
 
   return jsyaml.dump(baseDoc, {
     indent: 2,

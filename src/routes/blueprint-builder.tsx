@@ -452,6 +452,14 @@ function BlueprintBuilderRoute() {
               );
               templateStore.setSelectedTemplate(details);
               templateStore.setTemplateDetailOpen(true);
+              if (details.composeVersionRemoved) {
+                toast({
+                  title: "Obsolete Compose version removed",
+                  description: "The top-level version field is obsolete in Docker Compose V2 and was removed from this template.",
+                  variant: "warning",
+                  duration: 4500,
+                });
+              }
             } catch (e) {
               // eslint-disable-next-line no-console
               console.error(e);

@@ -55,10 +55,9 @@ export function ServicesTab({
             const displayName = svc.name?.trim() || "";
             const imageName = svc.image?.trim() || "";
             const meta = imageName || "no image specified";
-            // Unnamed-and-imageless rows are the placeholder slot; the user
-            // can't usefully delete it (we'd just regenerate one). Hide the
-            // trash icon to keep that affordance honest.
-            const showTrash = Boolean(displayName || imageName);
+            // Allow deleting manually added blank rows. Only the last
+            // remaining service is protected so the builder is never stranded.
+            const showTrash = services.length > 1;
             return (
               <div
                 key={idx}

@@ -3,28 +3,26 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { SetupSidebar, type BuilderView } from "../components/SetupSidebar";
 import { Field } from "../components/compose-builder/ServiceForm/Field";
+import {
+  validateScheduleConfig,
+  validateSchedulerOutput,
+  type ScheduleConfig,
+  type ScheduleConfigInput,
+  type ScheduleType,
+} from "../utils/validation/scheduler";
+import {
+  formatValidationIssues,
+  type ValidationIssue,
+} from "../utils/validation/issues";
 
 export const Route = createFileRoute("/scheduler-builder")({
   component: SchedulerBuilderRoute,
 });
 
-type ScheduleType = "cron" | "github-actions" | "systemd-timer";
-
-interface ScheduleConfig {
-  type: ScheduleType;
-  name: string;
-  schedule: string;
-  command: string;
-  description?: string;
-  enabled?: boolean;
-  user?: string;
-  workingDir?: string;
-}
-
 function SchedulerBuilderRoute() {
   const navigate = useNavigate();
   const [scheduleType, setScheduleType] = useState<ScheduleType>("cron");
-  const [config, setConfig] = useState<ScheduleConfig>({
+  const [config, setConfig] = useState<ScheduleConfigInput>({
     type: "cron",
     name: "",
     schedule: "",
@@ -34,7 +32,7 @@ function SchedulerBuilderRoute() {
     user: "",
     workingDir: "",
   });
-  const effectiveConfig: ScheduleConfig = { ...config, type: scheduleType };
+  const effectiveConfig: ScheduleConfigInput = { ...config, type: scheduleType };
 
   const generateCron = useCallback((cfg: ScheduleConfig): string => {
     const user = cfg.user || "root";
@@ -56,7 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: ${cfg.description || "Run command"}
-        run: ${cfg.command}
+        run: |
+          ${cfg.command}
 `;
   }, []);
 
@@ -95,7 +94,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-${cfg.user ? `User=${cfg.user}\n` : ""}${cfg.workingDir ? `WorkingDirectory=${cfg.workingDir}\n` : ""}ExecStart=/bin/bash -c '${cfg.command}'
+${cfg.user ? `User=${cfg.user}\n` : ""}${cfg.workingDir ? `WorkingDirectory=${cfg.workingDir}\n` : ""}ExecStart=/bin/bash -c '${cfg.command.replace(/'/g, "'\\''")}'
 `;
 
     return `# ${timerName}
@@ -106,24 +105,39 @@ ${serviceUnit}
 `;
   }, []);
 
-  const output = useMemo(() => {
+  const configValidation = useMemo(
+    () => validateScheduleConfig(effectiveConfig),
+    [effectiveConfig],
+  );
+
+  const generatedOutput = useMemo(() => {
+    if (!configValidation.ok || !configValidation.data) return "";
     switch (scheduleType) {
       case "cron":
-        return generateCron(effectiveConfig);
+        return generateCron(configValidation.data);
       case "github-actions":
-        return generateGitHubActions(effectiveConfig);
+        return generateGitHubActions(configValidation.data);
       case "systemd-timer":
-        return generateSystemdTimer(effectiveConfig);
+        return generateSystemdTimer(configValidation.data);
       default:
         return "";
     }
   }, [
     scheduleType,
-    effectiveConfig,
+    configValidation,
     generateCron,
     generateGitHubActions,
     generateSystemdTimer,
   ]);
+
+  const outputValidation = useMemo(() => {
+    if (!configValidation.ok) return configValidation;
+    return validateSchedulerOutput(scheduleType, generatedOutput);
+  }, [configValidation, generatedOutput, scheduleType]);
+
+  const output = outputValidation.ok
+    ? generatedOutput
+    : invalidBuilderOutput(outputValidation.issues);
 
   const filename = useMemo(() => {
     switch (scheduleType) {
@@ -144,6 +158,23 @@ ${serviceUnit}
     else if (view === "blueprint") navigate({ to: "/blueprint-builder" });
   };
 
+  const handleScheduleTypeChange = (next: ScheduleType) => {
+    setScheduleType(next);
+    setConfig((prev) => ({
+      ...prev,
+      type: next,
+      ...(next === "github-actions" ? { user: "", workingDir: "" } : {}),
+    }));
+  };
+
+  const fieldError = (path: string) =>
+    configValidation.issues.find((issue) => issue.path === path)?.message ??
+    null;
+
+  const outputError = !outputValidation.ok
+    ? formatValidationIssues(outputValidation.issues)
+    : null;
+
   return (
     <div className="builder-shell builder-shell--three">
       <SetupSidebar view="scheduler" onNav={handleNav} />
@@ -162,7 +193,7 @@ ${serviceUnit}
             className={
               "config-tab" + (scheduleType === "cron" ? " active" : "")
             }
-            onClick={() => setScheduleType("cron")}
+            onClick={() => handleScheduleTypeChange("cron")}
           >
             Cron
           </button>
@@ -172,7 +203,7 @@ ${serviceUnit}
               "config-tab" +
               (scheduleType === "github-actions" ? " active" : "")
             }
-            onClick={() => setScheduleType("github-actions")}
+            onClick={() => handleScheduleTypeChange("github-actions")}
           >
             GitHub Actions
           </button>
@@ -182,7 +213,7 @@ ${serviceUnit}
               "config-tab" +
               (scheduleType === "systemd-timer" ? " active" : "")
             }
-            onClick={() => setScheduleType("systemd-timer")}
+            onClick={() => handleScheduleTypeChange("systemd-timer")}
           >
             systemd
           </button>
@@ -208,7 +239,6 @@ ${serviceUnit}
         </div>
       </section>
 
-      {/* Form column */}
       <section className="service-col">
         <div className="col-head">
           <h2 className="col-head-title">
@@ -217,19 +247,21 @@ ${serviceUnit}
           </h2>
         </div>
         <div className="svc-tab">
-          <Field label="Name" required>
+          <Field label="Name" required error={fieldError("name")}>
             <input
               className="input"
               value={config.name}
               onChange={(e) => setConfig({ ...config, name: e.target.value })}
+              aria-invalid={fieldError("name") ? true : undefined}
               placeholder="nightly-backup"
             />
           </Field>
 
           <Field
             label="Schedule"
-            hint='Cron format: "minute hour day month weekday" — e.g. "0 0 * * *"'
+            hint='Cron format: "minute hour day month weekday" - e.g. "0 0 * * *"'
             required
+            error={fieldError("schedule")}
           >
             <input
               className="input"
@@ -237,11 +269,12 @@ ${serviceUnit}
               onChange={(e) =>
                 setConfig({ ...config, schedule: e.target.value })
               }
+              aria-invalid={fieldError("schedule") ? true : undefined}
               placeholder="0 0 * * *"
             />
           </Field>
 
-          <Field label="Command" required>
+          <Field label="Command" required error={fieldError("command")}>
             <textarea
               className="input"
               rows={4}
@@ -249,40 +282,44 @@ ${serviceUnit}
               onChange={(e) =>
                 setConfig({ ...config, command: e.target.value })
               }
+              aria-invalid={fieldError("command") ? true : undefined}
               placeholder="/usr/local/bin/backup.sh"
             />
           </Field>
 
-          <Field label="Description">
+          <Field label="Description" error={fieldError("description")}>
             <input
               className="input"
               value={config.description || ""}
               onChange={(e) =>
                 setConfig({ ...config, description: e.target.value })
               }
+              aria-invalid={fieldError("description") ? true : undefined}
               placeholder="What does this task do?"
             />
           </Field>
 
           {(scheduleType === "cron" || scheduleType === "systemd-timer") && (
             <div className="svc-grid-2">
-              <Field label="User">
+              <Field label="User" error={fieldError("user")}>
                 <input
                   className="input"
                   value={config.user || ""}
                   onChange={(e) =>
                     setConfig({ ...config, user: e.target.value })
                   }
+                  aria-invalid={fieldError("user") ? true : undefined}
                   placeholder="root"
                 />
               </Field>
-              <Field label="Working directory">
+              <Field label="Working directory" error={fieldError("workingDir")}>
                 <input
                   className="input"
                   value={config.workingDir || ""}
                   onChange={(e) =>
                     setConfig({ ...config, workingDir: e.target.value })
                   }
+                  aria-invalid={fieldError("workingDir") ? true : undefined}
                   placeholder="/srv/app"
                 />
               </Field>
@@ -308,9 +345,15 @@ ${serviceUnit}
             <code>{output || "# Fill the form to generate output."}</code>
           </pre>
           <div className="code-statusbar">
-            <span className="status-tag">
-              <span className="status-dot ok" aria-hidden />
-              Ready
+            <span
+              className={"status-tag" + (outputError ? " err" : "")}
+              aria-live="polite"
+            >
+              <span
+                className={"status-dot " + (outputError ? "err" : "ok")}
+                aria-hidden
+              />
+              {outputError || "Valid"}
             </span>
             <span className="status-mono">
               {output.split("\n").length} lines · UTF-8 · LF
@@ -321,4 +364,14 @@ ${serviceUnit}
       </section>
     </div>
   );
+}
+
+function invalidBuilderOutput(issues: ValidationIssue[]): string {
+  return [
+    "# Output blocked by validation",
+    ...issues.map((issue) => {
+      const label = issue.path ? `${issue.path}: ` : "";
+      return `# ${label}${issue.message}`;
+    }),
+  ].join("\n");
 }

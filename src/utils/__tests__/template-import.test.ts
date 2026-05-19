@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { parseComposeService, parseComposeTemplate } from "../template-import";
 
 describe("parseComposeTemplate", () => {
+
+  it("sanitizes obsolete top-level compose version during import", () => {
+    const yaml = `version: "3.8"
+services:
+  web:
+    image: nginx:latest
+`;
+
+    const result = parseComposeTemplate(yaml);
+    expect(result.services).toHaveLength(1);
+    expect(result.services[0].name).toBe("web");
+  });
   it("parses a single-service compose", () => {
     const yaml = `
 services:

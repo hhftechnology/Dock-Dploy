@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { validateComposeYaml } from "../compose";
 
 describe("validateComposeYaml", () => {
+
+  it("accepts and sanitizes obsolete top-level compose version", () => {
+    const r = validateComposeYaml(`version: "3.8"
+services:
+  web:
+    image: nginx:latest
+`);
+    expect(r.ok).toBe(true);
+  });
   it("rejects empty input", () => {
     const r = validateComposeYaml("");
     expect(r.ok).toBe(false);

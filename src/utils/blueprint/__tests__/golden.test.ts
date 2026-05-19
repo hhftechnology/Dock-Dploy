@@ -21,8 +21,7 @@ describe("golden — nginx → pangolin blueprint", () => {
   it("compose output snapshot", () => {
     const bp = fromCompose(NGINX_COMPOSE, "example.com");
     expect(toComposeYaml(bp)).toMatchInlineSnapshot(`
-      "version: "3.8"
-      services:
+      "services:
         nginx:
           image: nginx:1.27-alpine
           container_name: nginx

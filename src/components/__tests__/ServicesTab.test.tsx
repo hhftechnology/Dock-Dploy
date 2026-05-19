@@ -5,7 +5,7 @@ import { ServicesTab } from "../compose-builder/ConfigColumn/ServicesTab";
 import { defaultService } from "../../utils/default-configs";
 
 describe("ServicesTab", () => {
-  it("hides the trash icon on an unnamed service", () => {
+  it("hides the trash icon on the last remaining service", () => {
     render(
       <ServicesTab
         services={[defaultService()]}
@@ -22,12 +22,11 @@ describe("ServicesTab", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows the trash icon once a service is named", () => {
-    const svc = { ...defaultService(), name: "web", image: "nginx" };
+  it("shows trash icons for manually added blank services when more than one exists", () => {
     render(
       <ServicesTab
-        services={[svc]}
-        selectedIdx={0}
+        services={[defaultService(), defaultService()]}
+        selectedIdx={1}
         selectedType="service"
         onSelectService={() => {}}
         onAddService={() => {}}
@@ -36,8 +35,8 @@ describe("ServicesTab", () => {
       />,
     );
     expect(
-      screen.getByRole("button", { name: /remove service/i }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: /remove service/i }),
+    ).toHaveLength(2);
   });
 
   it("fires onRemoveService when the trash is clicked", async () => {
@@ -45,7 +44,7 @@ describe("ServicesTab", () => {
     const svc = { ...defaultService(), name: "web", image: "nginx" };
     render(
       <ServicesTab
-        services={[svc]}
+        services={[svc, defaultService()]}
         selectedIdx={0}
         selectedType="service"
         onSelectService={() => {}}
@@ -55,7 +54,7 @@ describe("ServicesTab", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /remove service/i }),
+      screen.getByRole("button", { name: /remove service web/i }),
     );
     expect(onRemove).toHaveBeenCalledWith(0);
   });

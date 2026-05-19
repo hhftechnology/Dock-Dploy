@@ -1,18 +1,22 @@
 import { useState, useCallback } from "react";
-import type { ServiceConfig } from "../types/compose";
+import type {
+  NetworkConfig,
+  ServiceConfig,
+  VolumeConfig,
+} from "../types/compose";
 import type { VPNConfig } from "../types/vpn-configs";
 import {
-  convertToDockerRun,
-  convertToSystemd,
-  generateKomodoToml,
-  generateEnvFile,
-} from "../utils/converters";
-import { redactSensitiveData } from "../utils/validation";
+  createValidatedComposeOutput,
+  invalidOutputMessage,
+  type ComposeOutputFormat,
+} from "../utils/validation/outputs";
 
 export type ConversionType = "docker-run" | "systemd" | "env" | "redact" | "komodo";
 
 export interface UseConversionDialogOptions {
   services: ServiceConfig[];
+  networks?: NetworkConfig[];
+  volumes?: VolumeConfig[];
   selectedIdx: number | null;
   yaml: string;
   vpnConfig: VPNConfig;
@@ -20,6 +24,8 @@ export interface UseConversionDialogOptions {
 
 export function useConversionDialog({
   services,
+  networks = [],
+  volumes = [],
   selectedIdx,
   yaml,
   vpnConfig,
@@ -27,48 +33,26 @@ export function useConversionDialog({
   const [conversionDialogOpen, setConversionDialogOpen] = useState(false);
   const [conversionType, setConversionType] = useState<ConversionType | "">("");
   const [conversionOutput, setConversionOutput] = useState<string>("");
+  const [conversionValid, setConversionValid] = useState(true);
 
   const handleConversion = useCallback(
     (type: ConversionType) => {
       setConversionType(type);
-      let output: string;
 
-      try {
-        switch (type) {
-          case "docker-run":
-            if (selectedIdx !== null && services[selectedIdx]) {
-              output = convertToDockerRun(services[selectedIdx]);
-            } else {
-              output = services.map((s) => convertToDockerRun(s)).join("\n\n");
-            }
-            break;
-          case "systemd":
-            if (selectedIdx !== null && services[selectedIdx]) {
-              output = convertToSystemd(services[selectedIdx]);
-            } else {
-              output = services.map((s) => convertToSystemd(s)).join("\n\n");
-            }
-            break;
-          case "env":
-            output = generateEnvFile(services, vpnConfig);
-            break;
-          case "redact":
-            output = redactSensitiveData(yaml);
-            break;
-          case "komodo":
-            output = generateKomodoToml(yaml);
-            break;
-          default:
-            output = "Unknown conversion type";
-        }
-        setConversionOutput(output);
-        setConversionDialogOpen(true);
-      } catch (error: any) {
-        setConversionOutput(`Error: ${error.message}`);
-        setConversionDialogOpen(true);
-      }
+      const result = createValidatedComposeOutput(type as ComposeOutputFormat, {
+        services,
+        networks,
+        volumes,
+        selectedIdx,
+        yaml,
+        vpn: vpnConfig,
+      });
+
+      setConversionValid(result.ok);
+      setConversionOutput(result.ok ? result.output : invalidOutputMessage(result));
+      setConversionDialogOpen(true);
     },
-    [services, selectedIdx, yaml, vpnConfig]
+    [services, networks, volumes, selectedIdx, yaml, vpnConfig],
   );
 
   const closeDialog = useCallback(() => {
@@ -80,6 +64,7 @@ export function useConversionDialog({
     setConversionDialogOpen,
     conversionType,
     conversionOutput,
+    conversionValid,
     handleConversion,
     closeDialog,
   };
