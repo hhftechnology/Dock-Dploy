@@ -51,6 +51,31 @@ describe("useTemplateStore", () => {
     expect(fetchMock.mock.calls[0][0]).toContain("/meta.json");
   });
 
+
+  it("loads marketplace metadata when optional links are invalid", async () => {
+    const payload = [
+      {
+        id: "plex",
+        name: "Plex",
+        links: { website: "", docs: "not-a-url" },
+      },
+    ];
+    const fetchMock = mockFetchOk(payload);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useTemplateStore());
+
+    await act(async () => {
+      result.current.setTemplateStoreOpen(true);
+    });
+
+    await waitFor(() => {
+      expect(result.current.templates).toHaveLength(1);
+    });
+    expect(result.current.templates[0].links).toBeUndefined();
+    expect(result.current.templateError).toBeNull();
+  });
+
   it("surfaces an error message on fetch failure", async () => {
     const fetchMock = mockFetchFail("Not Found");
     vi.stubGlobal("fetch", fetchMock);

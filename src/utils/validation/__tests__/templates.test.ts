@@ -29,6 +29,26 @@ describe("template validation", () => {
     expect(result.issues.length).toBeGreaterThan(0);
   });
 
+
+  it("drops invalid optional links without rejecting marketplace metadata", () => {
+    const result = validateTemplateMetaList([
+      {
+        id: "plex",
+        name: "Plex",
+        links: {
+          website: "",
+          docs: "not-a-url",
+          github: "https://github.com/example/plex",
+        },
+      },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(result.data?.[0]?.links).toEqual({
+      github: "https://github.com/example/plex",
+    });
+  });
+
   it("requires compose content for template details", () => {
     const result = validateTemplateDetails({
       id: "nginx",

@@ -1,4 +1,10 @@
 import { z } from "zod";
+
+const optionalUrl = z.preprocess((value) => {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const result = z.string().url().safeParse(value);
+  return result.success ? result.data : undefined;
+}, z.string().url().optional());
 import {
   validateWithSchema,
   type ValidationResult,
@@ -21,11 +27,17 @@ export const templateMetaSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   links: z
     .object({
-      github: z.string().url().optional(),
-      website: z.string().url().optional(),
-      docs: z.string().url().optional(),
+      github: optionalUrl,
+      website: optionalUrl,
+      docs: optionalUrl,
     })
     .partial()
+    .transform((links) => {
+      const cleaned = Object.fromEntries(
+        Object.entries(links).filter(([, value]) => value !== undefined),
+      );
+      return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+    })
     .optional(),
 });
 
