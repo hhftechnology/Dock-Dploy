@@ -314,6 +314,7 @@ docker rm -f dock-dploy
 **One-Click Deploy**
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/hhftechnology/Dock-Dploy)
+<a href="https://repocloud.io/details/Dock-Dploy/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="Deploy on RepoCloud" height="32"></a>
 
 **Manual Deploy**
 
