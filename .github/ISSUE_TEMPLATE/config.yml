@@ -1,11 +1,12 @@
+# Issue chooser for Dock-Dploy. Bug reports use the templates; questions and ideas go to the forum.
 blank_issues_enabled: false
 contact_links:
-    - name: New Feature request
-      url: https://github.com/hhftechnology/Dock-Dploy/discussions/new?category=request-feature
-      about: For feature/script requests, please use the Discussions section.
-    - name: 🤔 Questions and Help
-      url: https://forum.hhf.technology/c/help/85
-      about: For suggestions or questions, please use the Our forums.
-    - name: Discord
-      url: https://discord.gg/HDCt9MjyMJ
-      about: Join our Discord server to chat with other users in the hhf community.
+  - name: 💬 Questions & help (Dock-Dploy on the HHF forum)
+    url: https://forum.hhf.technology/c/docker-deploy-tools/dock-dploy
+    about: Setup questions, errors and ideas for Dock-Dploy. GitHub issues are mirrored there too.
+  - name: 🗨️ Discord
+    url: https://discord.gg/HDCt9MjyMJ
+    about: Chat with the HHF community.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/hhftechnology/Dock-Dploy/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue.

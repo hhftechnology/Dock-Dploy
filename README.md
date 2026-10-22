@@ -213,6 +213,8 @@ npm run serve
 
 ```bash
 # Clone the repository
+
+[![Discuss on the HHF forum](https://img.shields.io/badge/discuss-forum.hhf.technology-5E35B1?logo=discourse&logoColor=white)](https://forum.hhf.technology/c/docker-deploy-tools/dock-dploy)
 git clone https://github.com/hhftechnology/Dock-Dploy.git
 cd Dock-Dploy
 
